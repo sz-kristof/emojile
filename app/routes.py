@@ -444,21 +444,3 @@ def make_guess():
         'stats': stats_updated_data # Will be null if game not over
     }
     return jsonify(response_data)
-
-# ... (get_emoji function) ...
-@main.route('/api/get-emoji/<int:riddle_id>')
-def get_emoji(riddle_id):
-    # Basic security: Check if the requested ID matches the one in the session
-    # This prevents users from just iterating through /api/get-emoji/1, /api/get-emoji/2 etc.
-    # unless they are on the correct day/test offset for that riddle.
-    session_riddle_id = session.get('riddle_id')
-    print(f"[DEBUG] API get_emoji: Requested ID = {riddle_id}, Session ID = {session_riddle_id}") # DEBUG API
-    if riddle_id != session_riddle_id:
-        # Return an empty response or an error if the ID doesn't match the session's current riddle
-        return jsonify({"error": "Not authorized or invalid riddle ID"}), 403 # Forbidden
-
-    riddle = Riddle.query.get(riddle_id)
-    if riddle:
-        return jsonify({"emoji": riddle.emoji})
-    else:
-        return jsonify({"error": "Riddle not found"}), 404 # Not Found
