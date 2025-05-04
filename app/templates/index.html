@@ -252,8 +252,8 @@
                     </div>
 
                     <!-- Guesses Left Display -->
-                    <div class="guesses-left">
-                        Guesses Left: {{ max_guesses - incorrect_guesses }} / {{ max_guesses }}
+                    <div class="guesses-left" id="guesses-left-display">
+                        Guesses left: {{ max_guesses - incorrect_guesses }}
                     </div>
                     <!-- End Guesses Left Display -->
 
@@ -261,14 +261,16 @@
                     <div class="answer-tiles">
                         {% for char in answer_display %}
                             {% if char.isalpha() %}
-                                <span class="answer-tile">
+                                {# Add the ID attribute here #}
+                                <span class="answer-tile" id="answer-char-{{ loop.index0 }}">
                                     {{ char.upper() if (char in guessed_letters or game_over) else '&nbsp;' | safe }}
                                 </span>
                             {% elif char == ' ' %}
+                                {# Spaces don't need an ID for guessing, but could add one if needed for other reasons #}
                                 <span class="answer-tile space">&nbsp;</span>
                             {% else %}
-                                {# Display other characters like hyphens directly #}
-                                <span class="answer-tile">{{ char }}</span>
+                                {# Other characters like hyphens - add ID for consistency? #}
+                                <span class="answer-tile" id="answer-char-{{ loop.index0 }}">{{ char }}</span>
                             {% endif %}
                         {% endfor %}
                     </div>
