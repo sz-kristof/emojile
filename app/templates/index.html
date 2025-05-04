@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Emoji Riddle</title>
+    <!-- Make the title more descriptive -->
+    <title>Emojile - Daily Emoji Guessing Game</title>
+    <!-- Add a meta description -->
+    <meta name="description" content="Guess the name of the daily emoji! A fun, free word puzzle game similar to Wordle, but with emojis. Test your emoji knowledge.">
     <!-- Add the favicon link here -->
     <link rel="icon" href="{{ url_for('static', filename='emojiriddlewebicon.png') }}" type="image/png">
     <!-- Existing CSS links -->
@@ -208,6 +211,7 @@
     <button id="darkModeToggle" class="btn btn-secondary btn-sm">🌙</button>
 
     <div class="container">
+        <!-- Ensure this is the primary heading -->
         <h1 class="text-center mb-4">Guess the Emoji Name!</h1>
 
         <!-- Countdown Timer Display -->
@@ -291,7 +295,8 @@
         {% if stats.total_games > 0 %} {# Only show stats if at least one game played #}
         <div class="card mt-4">
             <div class="card-header">
-                Your Statistics
+                <!-- Use a heading for structure within the card -->
+                <h2>Your Statistics</h2>
                 {% if streak_test_mode %}
                     <span class="badge bg-warning text-dark float-end">Streak Test Mode Active</span>
                 {% endif %}
@@ -309,11 +314,8 @@
                         <p><strong>Longest Correct Guess Streak:</strong> {{ stats.longest_correct_streak }}</p>
                     </div>
                 </div>
-                 {% if stats.last_played_date_str %}
-                 <small class="text-muted">Last game finished: {{ stats.last_played_date_str }}</small>
-                 {% endif %}
-                 {% if stats.last_played_datetime_str %}
-                 <small class="text-muted">Last game finished: {{ stats.last_played_datetime_str }}</small>
+                 {% if stats.last_played_datetime %} {# Check if the datetime object exists #}
+                 <small class="text-muted">Last game finished: {{ stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S') }}</small> {# Format the datetime object #}
                  {% endif %}
             </div>
         </div>
