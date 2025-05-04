@@ -285,162 +285,175 @@ def index():
 
 @main.route('/api/make-guess', methods=['POST'])
 def make_guess():
-    # --- 1. Get Player UUID (needed for stats) ---
-    player_uuid_str = request.cookies.get(PLAYER_COOKIE_NAME)
-    if not player_uuid_str:
-        # Should not happen if cookie is set on page load, but handle defensively
-        return jsonify({'error': 'Player identifier missing. Please refresh.', 'success': False}), 400
+    try: # <<< Add outer try block
+        # --- 1. Get Player UUID ---
+        player_uuid_str = request.cookies.get(PLAYER_COOKIE_NAME)
+        if not player_uuid_str:
+            return jsonify({'error': 'Player identifier missing. Please refresh.', 'success': False}), 400
 
-    # --- 2. Get Guess from Request Body ---
-    data = request.get_json()
-    if not data or 'guess' not in data:
-        return jsonify({'error': 'Missing guess data.', 'success': False}), 400
+        # --- 2. Get Guess from Request Body ---
+        data = request.get_json()
+        if not data or 'guess' not in data:
+            return jsonify({'error': 'Missing guess data.', 'success': False}), 400
 
-    guessed_letter = data['guess'].lower()
+        guessed_letter = data['guess'].lower()
 
-    # --- 3. Basic Validation ---
-    if not (guessed_letter and len(guessed_letter) == 1 and guessed_letter.isalpha()):
-        return jsonify({'error': 'Invalid guess.', 'success': False}), 400
+        # --- 3. Basic Validation ---
+        if not (guessed_letter and len(guessed_letter) == 1 and guessed_letter.isalpha()):
+            return jsonify({'error': 'Invalid guess.', 'success': False}), 400
 
-    # --- 4. Load Current Game State from Session ---
-    # (Make sure these session variables are set correctly by the index route)
-    session_riddle_id = session.get('riddle_id')
-    riddle_answer = session.get('riddle_answer', "")
-    guessed_letters_set = set(session.get('guessed_letters', []))
-    incorrect_guesses = session.get('incorrect_guesses', 0)
+        # --- 4. Load Current Game State from Session ---
+        session_riddle_id = session.get('riddle_id')
+        riddle_answer = session.get('riddle_answer', "")
+        guessed_letters_set = set(session.get('guessed_letters', []))
+        incorrect_guesses = session.get('incorrect_guesses', 0)
 
-    if not session_riddle_id or not riddle_answer:
-         return jsonify({'error': 'Game state not found in session. Please refresh.', 'success': False}), 400
+        if not session_riddle_id or not riddle_answer:
+             return jsonify({'error': 'Game state not found in session. Please refresh.', 'success': False}), 400
 
-    # --- 5. Check if Game Already Over or Letter Already Guessed ---
-    answer_chars = {char for char in riddle_answer if char.isalpha()}
-    was_game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or answer_chars.issubset(guessed_letters_set)
+        # --- 5. Check if Game Already Over or Letter Already Guessed ---
+        answer_chars = {char for char in riddle_answer if char.isalpha()}
+        was_game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or answer_chars.issubset(guessed_letters_set)
 
-    if was_game_over:
-        return jsonify({'error': 'Game is already over.', 'success': False}), 400
-    if guessed_letter in guessed_letters_set:
-        return jsonify({'error': 'Letter already guessed.', 'success': False}), 400
+        if was_game_over:
+            return jsonify({'error': 'Game is already over.', 'success': False}), 400
+        if guessed_letter in guessed_letters_set:
+            return jsonify({'error': 'Letter already guessed.', 'success': False}), 400
 
-    # --- 6. Process the Guess ---
-    session['guessed_letters'] = session.get('guessed_letters', []) + [guessed_letter]
-    guessed_letters_set.add(guessed_letter) # Update local set too
+        # --- 6. Process the Guess ---
+        session['guessed_letters'] = session.get('guessed_letters', []) + [guessed_letter]
+        guessed_letters_set.add(guessed_letter)
 
-    is_correct_guess = guessed_letter in riddle_answer
-    if not is_correct_guess:
-        session['incorrect_guesses'] += 1
-        incorrect_guesses += 1
+        is_correct_guess = guessed_letter in riddle_answer
+        if not is_correct_guess:
+            session['incorrect_guesses'] += 1
+            incorrect_guesses += 1
 
-    session.modified = True
+        session.modified = True
 
-    # --- 7. Check for Win/Loss *after* guess ---
-    is_win = answer_chars.issubset(guessed_letters_set)
-    is_loss = incorrect_guesses >= MAX_INCORRECT_GUESSES
-    is_game_now_over = is_win or is_loss
+        # --- 7. Check for Win/Loss *after* guess ---
+        is_win = answer_chars.issubset(guessed_letters_set)
+        is_loss = incorrect_guesses >= MAX_INCORRECT_GUESSES
+        is_game_now_over = is_win or is_loss
 
-    stats_updated_data = None # To hold updated stats if game ends
+        stats_updated_data = None
 
-    # --- 8. Update Stats in DB if Game Just Ended ---
-    if is_game_now_over:
-        now = datetime.now() # Need current time
-        today = date.today() # Need current date
-        # Determine effective date based on test mode (copy logic from index)
-        current_test_offset = session.get('test_offset', 0)
-        streak_test_mode = session.get('streak_test_mode_flag', False)
-        effective_date = today + timedelta(days=current_test_offset) if current_test_offset else today
+        # --- 8. Update Stats in DB if Game Just Ended ---
+        if is_game_now_over:
+            # This whole block might have an error, keep it inside the main try
+            now = datetime.now()
+            today = date.today()
+            current_test_offset = session.get('test_offset', 0)
+            streak_test_mode = session.get('streak_test_mode_flag', False)
+            effective_date = today + timedelta(days=current_test_offset) if current_test_offset else today
 
-        # Load record again (or prepare to create)
-        player_stats_record = PlayerStats.query.get(player_uuid_str)
-        if not player_stats_record:
-            player_stats_record = PlayerStats(player_uuid=player_uuid_str)
-            db.session.add(player_stats_record)
-            print(f"[DEBUG] make_guess: Creating new PlayerStats record in DB for {player_uuid_str}")
+            player_stats_record = PlayerStats.query.get(player_uuid_str)
+            new_record_created = False
+            if not player_stats_record:
+                player_stats_record = PlayerStats(player_uuid=player_uuid_str)
+                db.session.add(player_stats_record)
+                new_record_created = True
+                print(f"[DEBUG] make_guess: Preparing new PlayerStats record in DB for {player_uuid_str}")
 
-        # Load current stats from DB to update
-        stats = {
-            'total_games': player_stats_record.total_games,
-            'total_incorrect': player_stats_record.total_incorrect,
-            'current_play_streak': player_stats_record.current_play_streak,
-            'longest_play_streak': player_stats_record.longest_play_streak,
-            'current_correct_streak': player_stats_record.current_correct_streak,
-            'longest_correct_streak': player_stats_record.longest_correct_streak,
-            'last_played_datetime': player_stats_record.last_played_datetime
+            # Ensure record exists before accessing attributes
+            if player_stats_record:
+                stats = {
+                    'total_games': player_stats_record.total_games or 0, # Use default if None
+                    'total_incorrect': player_stats_record.total_incorrect or 0,
+                    'current_play_streak': player_stats_record.current_play_streak or 0,
+                    'longest_play_streak': player_stats_record.longest_play_streak or 0,
+                    'current_correct_streak': player_stats_record.current_correct_streak or 0,
+                    'longest_correct_streak': player_stats_record.longest_correct_streak or 0,
+                    'last_played_datetime': player_stats_record.last_played_datetime
+                }
+                last_played_datetime = stats['last_played_datetime']
+
+                # --- Update stats dictionary ---
+                stats['total_games'] += 1
+                stats['total_incorrect'] += incorrect_guesses
+                # ... (rest of streak logic remains the same) ...
+                played_yesterday = False
+                is_new_play_period = True
+                if last_played_datetime:
+                    # ... (streak date comparison logic) ...
+                    if streak_test_mode:
+                        time_delta = now - last_played_datetime
+                        one_minute_ago = now - timedelta(minutes=1)
+                        two_minutes_ago = now - timedelta(minutes=2)
+                        if last_played_datetime >= one_minute_ago:
+                             is_new_play_period = False
+                        elif last_played_datetime >= two_minutes_ago:
+                             played_yesterday = True
+                    else:
+                        yesterday_date = effective_date - timedelta(days=1)
+                        if last_played_datetime.date() == effective_date:
+                            is_new_play_period = False
+                        elif last_played_datetime.date() == yesterday_date:
+                            played_yesterday = True
+
+                if is_new_play_period:
+                    if played_yesterday:
+                        stats['current_play_streak'] += 1
+                        stats['current_correct_streak'] = stats['current_correct_streak'] + 1 if is_win else 0
+                    else:
+                        stats['current_play_streak'] = 1
+                        stats['current_correct_streak'] = 1 if is_win else 0
+
+                stats['longest_play_streak'] = max(stats['longest_play_streak'], stats['current_play_streak'])
+                stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
+                stats['last_played_datetime'] = now
+                # --- End stats dictionary update ---
+
+                # --- Update the DB Record ---
+                player_stats_record.total_games = stats['total_games']
+                player_stats_record.total_incorrect = stats['total_incorrect']
+                player_stats_record.current_play_streak = stats['current_play_streak']
+                player_stats_record.longest_play_streak = stats['longest_play_streak']
+                player_stats_record.current_correct_streak = stats['current_correct_streak']
+                player_stats_record.longest_correct_streak = stats['longest_correct_streak']
+                player_stats_record.last_played_datetime = stats['last_played_datetime']
+                print(f"[DEBUG] make_guess: Updating DB record attributes for {player_uuid_str}")
+
+                try:
+                    db.session.commit()
+                    print(f"[DEBUG] make_guess: Committed DB changes for {player_uuid_str}")
+                    stats_updated_data = {
+                        'total_games': stats['total_games'],
+                        'avg_incorrect': (stats['total_incorrect'] / stats['total_games']) if stats['total_games'] > 0 else 0,
+                        'current_play_streak': stats['current_play_streak'],
+                        'longest_play_streak': stats['longest_play_streak'],
+                        'current_correct_streak': stats['current_correct_streak'],
+                        'longest_correct_streak': stats['longest_correct_streak'],
+                        'last_played_datetime_str': stats['last_played_datetime'].strftime('%Y-%m-%d %H:%M:%S')
+                    }
+                except Exception as e_commit:
+                    db.session.rollback()
+                    print(f"[ERROR] make_guess: Failed to commit DB changes for {player_uuid_str}: {e_commit}")
+                    # Return specific error about saving stats
+                    return jsonify({'error': 'Game finished, but failed to save stats.', 'success': False, 'game_over': True, 'is_win': is_win}), 500
+            else:
+                 # This case should ideally not happen if add worked, but handle it
+                 print(f"[ERROR] make_guess: PlayerStats record was unexpectedly None for {player_uuid_str} even after attempting add.")
+                 return jsonify({'error': 'Internal error processing game end stats.', 'success': False, 'game_over': True, 'is_win': is_win}), 500
+
+
+        # --- 9. Prepare JSON Response (Success Path) ---
+        response_data = {
+            'success': True,
+            'guessed_letter': guessed_letter,
+            'is_correct': is_correct_guess,
+            'incorrect_guesses': incorrect_guesses,
+            'game_over': is_game_now_over,
+            'is_win': is_win if is_game_now_over else None,
+            'guessed_letters': list(guessed_letters_set),
+            'stats': stats_updated_data
         }
-        last_played_datetime = stats['last_played_datetime']
+        return jsonify(response_data)
 
-        # --- Update stats dictionary (copy logic from index route) ---
-        stats['total_games'] += 1
-        stats['total_incorrect'] += incorrect_guesses
-
-        played_yesterday = False
-        is_new_play_period = True
-
-        if last_played_datetime:
-            if streak_test_mode:
-                time_delta = now - last_played_datetime
-                one_minute_ago = now - timedelta(minutes=1)
-                two_minutes_ago = now - timedelta(minutes=2)
-                if last_played_datetime >= one_minute_ago:
-                     is_new_play_period = False
-                elif last_played_datetime >= two_minutes_ago:
-                     played_yesterday = True
-            else:
-                yesterday_date = effective_date - timedelta(days=1)
-                if last_played_datetime.date() == effective_date:
-                    is_new_play_period = False
-                elif last_played_datetime.date() == yesterday_date:
-                    played_yesterday = True
-
-        if is_new_play_period:
-            if played_yesterday:
-                stats['current_play_streak'] += 1
-                stats['current_correct_streak'] = stats['current_correct_streak'] + 1 if is_win else 0
-            else:
-                stats['current_play_streak'] = 1
-                stats['current_correct_streak'] = 1 if is_win else 0
-
-        stats['longest_play_streak'] = max(stats['longest_play_streak'], stats['current_play_streak'])
-        stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
-        stats['last_played_datetime'] = now
-        # --- End stats dictionary update ---
-
-        # --- Update the DB Record from the stats dict ---
-        player_stats_record.total_games = stats['total_games']
-        player_stats_record.total_incorrect = stats['total_incorrect']
-        player_stats_record.current_play_streak = stats['current_play_streak']
-        player_stats_record.longest_play_streak = stats['longest_play_streak']
-        player_stats_record.current_correct_streak = stats['current_correct_streak']
-        player_stats_record.longest_correct_streak = stats['longest_correct_streak']
-        player_stats_record.last_played_datetime = stats['last_played_datetime']
-        print(f"[DEBUG] make_guess: Updating DB record for {player_uuid_str}")
-
-        try:
-            db.session.commit()
-            print(f"[DEBUG] make_guess: Committed DB changes for {player_uuid_str}")
-            # Prepare stats to send back to frontend
-            stats_updated_data = {
-                'total_games': stats['total_games'],
-                'avg_incorrect': (stats['total_incorrect'] / stats['total_games']) if stats['total_games'] > 0 else 0,
-                'current_play_streak': stats['current_play_streak'],
-                'longest_play_streak': stats['longest_play_streak'],
-                'current_correct_streak': stats['current_correct_streak'],
-                'longest_correct_streak': stats['longest_correct_streak'],
-                'last_played_datetime_str': stats['last_played_datetime'].strftime('%Y-%m-%d %H:%M:%S') # Format for display
-            }
-        except Exception as e:
-            db.session.rollback()
-            print(f"[ERROR] make_guess: Failed to commit DB changes for {player_uuid_str}: {e}")
-            # Don't block response, but maybe log error more formally
-            pass # Frontend will still get game state, just not updated stats
-
-    # --- 9. Prepare JSON Response ---
-    response_data = {
-        'success': True,
-        'guessed_letter': guessed_letter,
-        'is_correct': is_correct_guess,
-        'incorrect_guesses': incorrect_guesses,
-        'game_over': is_game_now_over,
-        'is_win': is_win if is_game_now_over else None, # Only relevant if game over
-        'guessed_letters': list(guessed_letters_set), # Send updated list
-        'stats': stats_updated_data # Will be null if game not over
-    }
-    return jsonify(response_data)
+    except Exception as e: # <<< Catch any unexpected error
+        # Log the full error traceback for debugging on the server
+        print(f"[ERROR] make_guess: Unhandled exception: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a generic JSON error response
+        return jsonify({'error': 'An unexpected server error occurred.', 'success': False}), 500
