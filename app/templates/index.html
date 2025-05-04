@@ -543,8 +543,9 @@
                         const answerChars = "{{ answer_display }}"; // Get the full answer string again
                         answerChars.split('').forEach((char, index) => {
                             const placeholder = document.getElementById(`answer-char-${index}`);
-                            // Check if it's an alpha character placeholder
-                            if (placeholder && char.isalpha()) {
+                            // Check if it's an alpha character placeholder using JavaScript regex
+                            // Replace char.isalpha() with regex test
+                            if (placeholder && /^[a-zA-Z]$/.test(char)) { // <<< FIX HERE
                                 placeholder.textContent = char.toUpperCase(); // Reveal the letter
                             }
                         });
