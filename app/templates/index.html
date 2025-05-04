@@ -222,7 +222,7 @@
 
     <div class="container">
         <!-- Ensure this is the primary heading -->
-        <h1 class="text-center mb-4">Guess the Emoji Name!</h1>
+        <h1 class="text-center mb-4">Guess the Official Emoji Name!</h1>
 
         <!-- Countdown Timer Display -->
         <div id="countdownTimer" class="text-center text-muted mb-3" style="font-size: 0.9rem;">
@@ -275,20 +275,21 @@
                     <!-- End Answer Display -->
 
                     <!-- Alphabet Tiles -->
-                    <div class="alphabet-tiles">
+                    <div class="alphabet-tiles text-center mt-4">
                         {% for letter in alphabet %}
                             {% set letter_lower = letter.lower() %}
                             {% set is_guessed = letter_lower in guessed_letters %}
-                            {# Check against the name (answer_display) #}
                             {% set is_correct = is_guessed and letter_lower in answer_display %}
-
-                            <a href="{{ url_for('main.index', guess=letter_lower) if not game_over else '#' }}"
-                               id="tile-{{ letter_lower }}"
-                               class="letter-tile
-                                      {{ 'correct' if is_correct else '' }}
-                                      {{ 'disabled' if is_guessed or game_over else '' }}">
+                            {% set is_disabled = is_guessed or game_over %}
+                            {# Change from <a> to <button> #}
+                            <button type="button"
+                                    class="letter-tile btn btn-outline-secondary m-1
+                                           {% if is_disabled %}disabled{% endif %}
+                                           {% if is_correct %}correct{% endif %}"
+                                    data-letter="{{ letter_lower }}" {# Store letter in data attribute #}
+                                    {% if is_disabled %}disabled aria-disabled="true"{% endif %}>
                                 {{ letter }}
-                            </a>
+                            </button>
                         {% endfor %}
                     </div>
                     <!-- End Alphabet Tiles -->
@@ -453,7 +454,156 @@
                 }
             });
             // --- End Keyboard Listener ---
-        });
+
+            // --- NEW: AJAX Guess Handling ---
+            const alphabetContainer = document.querySelector('.alphabet-tiles');
+            const answerDisplayContainer = document.querySelector('.answer-display');
+            const guessesLeftDisplay = document.getElementById('guesses-left-display');
+            const statsCard = document.getElementById('stats-card');
+            const statsBody = document.getElementById('stats-body');
+            const flashContainer = document.querySelector('.container'); // Target container to add flash messages
+
+            // Use event delegation
+            if (alphabetContainer) {
+                alphabetContainer.addEventListener('click', handleGuess);
+            }
+
+            async function handleGuess(event) {
+                // Only act on letter tiles that are buttons and not disabled
+                if (!event.target.matches('.letter-tile:not(:disabled)')) {
+                    return;
+                }
+
+                const button = event.target;
+                const letter = button.dataset.letter;
+
+                // Disable button immediately for feedback
+                button.disabled = true;
+                button.classList.add('disabled');
+
+                try {
+                    const response = await fetch("{{ url_for('main.make_guess') }}", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                            // Add CSRF token header here if using Flask-WTF/CSRFProtect
+                        },
+                        body: JSON.stringify({ guess: letter })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        // Handle errors (e.g., already guessed, game over, server error)
+                        console.error("Guess Error:", data.error || `HTTP error! status: ${response.status}`);
+                        addFlashMessage(data.error || 'An error occurred.', 'danger');
+                        // Re-enable button if the error wasn't "already guessed" or "game over"
+                        if (data.error?.toLowerCase().indexOf('already guessed') === -1 && data.error?.toLowerCase().indexOf('game is already over') === -1) {
+                             button.disabled = false;
+                             button.classList.remove('disabled');
+                        }
+                        return;
+                    }
+
+                    // --- Success: Update UI ---
+
+                    // 1. Update Answer Display
+                    const answerChars = "{{ answer_display }}"; // Get the full answer string
+                    answerChars.split('').forEach((char, index) => {
+                        const placeholder = document.getElementById(`answer-char-${index}`);
+                        if (placeholder && char.toLowerCase() === data.guessed_letter) {
+                            placeholder.textContent = char.toUpperCase();
+                        }
+                    });
+
+                    // 2. Update Guesses Left
+                    guessesLeftDisplay.textContent = `Guesses left: ${ {{ max_guesses }} - data.incorrect_guesses }`;
+
+                    // 3. Style the guessed letter tile
+                    if (data.is_correct) {
+                        button.classList.add('correct');
+                    } else {
+                        // Optionally add an 'incorrect' class for styling wrong guesses
+                        // button.classList.add('incorrect');
+                    }
+
+                    // 4. Handle Game Over
+                    if (data.game_over) {
+                        // Disable all remaining letter tiles
+                        alphabetContainer.querySelectorAll('.letter-tile:not(:disabled)').forEach(tile => {
+                            tile.disabled = true;
+                            tile.classList.add('disabled');
+                        });
+
+                        // Display Win/Loss Message
+                        const message = data.is_win ? 'Congratulations! You guessed it!' : 'Too many guesses! Better luck next time.';
+                        const category = data.is_win ? 'success' : 'warning';
+                        addFlashMessage(message, category);
+                        addFlashMessage(`The answer was: ${answerChars.toUpperCase()}`, 'info'); // Show answer
+
+                        // 5. Update Stats Display (if stats data is returned)
+                        if (data.stats) {
+                            updateStatsDisplay(data.stats);
+                            if (statsCard) statsCard.style.display = 'block'; // Ensure stats card is visible
+                        }
+                    }
+
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    addFlashMessage('A network error occurred. Please try again.', 'danger');
+                    // Re-enable button on network error
+                    button.disabled = false;
+                    button.classList.remove('disabled');
+                }
+            }
+
+            // Helper function to add flash messages dynamically
+            function addFlashMessage(message, category) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${category} alert-dismissible fade show`;
+                alertDiv.setAttribute('role', 'alert');
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                // Insert after the countdown timer or H1
+                const referenceNode = document.getElementById('countdownTimer') || document.querySelector('h1');
+                if (referenceNode && referenceNode.parentNode) {
+                     referenceNode.parentNode.insertBefore(alertDiv, referenceNode.nextSibling);
+                } else {
+                     flashContainer.insertBefore(alertDiv, flashContainer.firstChild); // Fallback
+                }
+
+                 // Auto-dismiss after a few seconds (optional)
+                 setTimeout(() => {
+                     const bootstrapAlert = bootstrap.Alert.getOrCreateInstance(alertDiv);
+                     if (bootstrapAlert) {
+                         bootstrapAlert.close();
+                     }
+                 }, 7000); // 7 seconds
+            }
+
+            // Helper function to update stats display
+            function updateStatsDisplay(statsData) {
+                const fields = {
+                    'stats-total-games': statsData.total_games,
+                    'stats-avg-incorrect': statsData.avg_incorrect.toFixed(2),
+                    'stats-current-play-streak': statsData.current_play_streak,
+                    'stats-longest-play-streak': statsData.longest_play_streak,
+                    'stats-current-correct-streak': statsData.current_correct_streak,
+                    'stats-longest-correct-streak': statsData.longest_correct_streak,
+                    'stats-last-played': statsData.last_played_datetime_str ? `Last game finished: ${statsData.last_played_datetime_str}` : ''
+                };
+                for (const id in fields) {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.textContent = fields[id];
+                    }
+                }
+            }
+
+        }); // End DOMContentLoaded
     </script>
 </body>
 </html>
