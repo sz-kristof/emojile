@@ -538,11 +538,23 @@
                             tile.classList.add('disabled');
                         });
 
+                        // --- ADD THIS BLOCK ---
+                        // Reveal the full answer in the tiles on game over
+                        const answerChars = "{{ answer_display }}"; // Get the full answer string again
+                        answerChars.split('').forEach((char, index) => {
+                            const placeholder = document.getElementById(`answer-char-${index}`);
+                            // Check if it's an alpha character placeholder
+                            if (placeholder && char.isalpha()) {
+                                placeholder.textContent = char.toUpperCase(); // Reveal the letter
+                            }
+                        });
+                        // --- END ADDED BLOCK ---
+
                         // Display Win/Loss Message
                         const message = data.is_win ? 'Congratulations! You guessed it!' : 'Too many guesses! Better luck next time.';
                         const category = data.is_win ? 'success' : 'warning';
                         addFlashMessage(message, category);
-                        addFlashMessage(`The answer was: ${answerChars.toUpperCase()}`, 'info'); // Show answer
+                        addFlashMessage(`The answer was: ${answerChars.toUpperCase()}`, 'info'); // Show answer in message
 
                         // 5. Update Stats Display (if stats data is returned)
                         if (data.stats) {
