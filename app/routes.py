@@ -154,8 +154,10 @@ def index():
     else:
         day_number_for_id = (effective_date - EPOCH_DATE).days
         today_riddle_id = (day_number_for_id % total_riddles) + 1
-        # Fetch the actual riddle object to get the answer for the session
-        current_riddle_obj = get_riddle_by_id(today_riddle_id) # Use helper
+        # Fetch the actual riddle object using SQLAlchemy query
+        # Replace the incorrect function call:
+        # current_riddle_obj = get_riddle_by_id(today_riddle_id) # Use helper
+        current_riddle_obj = Riddle.query.get(today_riddle_id) # <<< FIX HERE
         if current_riddle_obj:
             riddle_answer = current_riddle_obj.name.lower() # Store the correct answer for logic
             category = current_riddle_obj.category
