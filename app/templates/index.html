@@ -306,7 +306,7 @@
 
         <!-- Stats Display -->
         {% if stats.total_games > 0 %} {# Only show stats if at least one game played #}
-        <div class="card mt-4">
+        <div class="card mt-4" id="stats-card" {% if stats.total_games == 0 %}style="display: none;"{% endif %}> {# ID for showing/hiding #}
             <div class="card-header">
                 <!-- Use a heading for structure within the card -->
                 <h2>Your Statistics</h2>
@@ -314,21 +314,23 @@
                     <span class="badge bg-warning text-dark float-end">Streak Test Mode Active</span>
                 {% endif %}
             </div>
-            <div class="card-body">
+            <div class="card-body" id="stats-body"> {# ID for updating content #}
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Total Games Played:</strong> {{ stats.total_games }}</p>
-                        <p><strong>Average Incorrect Guesses:</strong> {{ "%.2f"|format(avg_incorrect) }}</p>
+                        <p><strong>Total Games Played:</strong> <span id="stats-total-games">{{ stats.total_games }}</span></p>
+                        <p><strong>Average Incorrect Guesses:</strong> <span id="stats-avg-incorrect">{{ "%.2f"|format(avg_incorrect) }}</span></p>
                     </div>
                     <div class="col-md-6">
-                        <p><strong>Current Daily Play Streak:</strong> {{ stats.current_play_streak }}</p>
-                        <p><strong>Longest Daily Play Streak:</strong> {{ stats.longest_play_streak }}</p>
-                        <p><strong>Current Correct Guess Streak:</strong> {{ stats.current_correct_streak }}</p>
-                        <p><strong>Longest Correct Guess Streak:</strong> {{ stats.longest_correct_streak }}</p>
+                        <p><strong>Current Daily Play Streak:</strong> <span id="stats-current-play-streak">{{ stats.current_play_streak }}</span></p>
+                        <p><strong>Longest Daily Play Streak:</strong> <span id="stats-longest-play-streak">{{ stats.longest_play_streak }}</span></p>
+                        <p><strong>Current Correct Guess Streak:</strong> <span id="stats-current-correct-streak">{{ stats.current_correct_streak }}</span></p>
+                        <p><strong>Longest Correct Guess Streak:</strong> <span id="stats-longest-correct-streak">{{ stats.longest_correct_streak }}</span></p>
                     </div>
                 </div>
                  {% if stats.last_played_datetime %} {# Check if the datetime object exists #}
-                 <small class="text-muted">Last game finished: {{ stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S') }}</small> {# Format the datetime object #}
+                 <small class="text-muted" id="stats-last-played">Last game finished: {{ stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S') }}</small> {# Format the datetime object #}
+                 {% else %}
+                 <small class="text-muted" id="stats-last-played"></small>
                  {% endif %}
             </div>
         </div>
