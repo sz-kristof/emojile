@@ -305,7 +305,6 @@
         {% endif %}
 
         <!-- Stats Display -->
-        {% if stats.total_games > 0 %} {# Only show stats if at least one game played #}
         <div class="card mt-4" id="stats-card" {% if stats.total_games == 0 %}style="display: none;"{% endif %}> {# ID for showing/hiding #}
             <div class="card-header">
                 <!-- Use a heading for structure within the card -->
@@ -334,7 +333,6 @@
                  {% endif %}
             </div>
         </div>
-        {% endif %}
         <!-- End Stats Display -->
 
         <footer class="text-center mt-4 text-muted py-3"> <!-- Added py-3 for padding -->
