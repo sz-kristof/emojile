@@ -84,6 +84,10 @@ def index():
     # DEBUG: Print effective date
     print(f"[DEBUG] index: Effective Date = {effective_date}")
 
+    # --- Calculate Day Number ---
+    day_number = (effective_date - EPOCH_DATE).days + 1 # Add 1 to start from Day 1
+    print(f"[DEBUG] index: Day Number = {day_number}") # DEBUG Day Number
+
     # --- Calculate Next Midnight ---
     # Combine the effective_date with midnight time, then add one day
     next_midnight_dt = datetime.combine(effective_date, time.min) + timedelta(days=1)
@@ -274,7 +278,8 @@ def index():
                            stats=stats, # Pass the loaded/updated stats dict
                            avg_incorrect=avg_incorrect,
                            streak_test_mode=streak_test_mode,
-                           next_midnight_iso=next_midnight_iso
+                           next_midnight_iso=next_midnight_iso,
+                           day_number=day_number # <<< ADD THIS
                            ))
     if set_cookie_in_response:
         # Set persistent cookie on final render if needed
