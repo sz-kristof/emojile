@@ -6,7 +6,7 @@ from . import db
 # Import the new model and UUID library
 from .models import Riddle, PlayerStats
 import string
-from datetime import date, timedelta, datetime, time
+from datetime import date, timedelta, datetime, time, timezone # Import timezone
 import uuid # Import uuid library
 
 main = Blueprint('main', __name__)
@@ -66,8 +66,10 @@ def index():
         pass
 
     # --- Determine Effective Date & Test Modes ---
-    now = datetime.now()
-    today = date.today()
+    # Use UTC for consistent day rollover
+    now_utc = datetime.now(timezone.utc) # Get current time in UTC
+    today_utc = now_utc.date()           # Get current date in UTC
+
     test_date_override = None
     current_test_offset = request.args.get('day_offset')
     streak_test_mode = request.args.get('streak_test_mode') == 'true' # Check for streak test mode
@@ -80,9 +82,10 @@ def index():
         flash("Invalid 'day_offset' parameter.", "warning")
         current_test_offset = None
 
-    effective_date = test_date_override if test_date_override else today
+    # Use UTC date unless overridden by test mode
+    effective_date = test_date_override if test_date_override else today_utc
     # DEBUG: Print effective date
-    print(f"[DEBUG] index: Effective Date = {effective_date}")
+    print(f"[DEBUG] index: Effective Date (UTC based) = {effective_date}")
 
     # --- Calculate Day Number ---
     day_number = (effective_date - EPOCH_DATE).days + 1 # Add 1 to start from Day 1
@@ -90,7 +93,7 @@ def index():
 
     # --- Calculate Next Midnight ---
     # Combine the effective_date with midnight time, then add one day
-    next_midnight_dt = datetime.combine(effective_date, time.min) + timedelta(days=1)
+    next_midnight_dt = datetime.combine(effective_date, time.min, tzinfo=timezone.utc if not test_date_override else None) + timedelta(days=1)
     # Convert to ISO format string for easier JS parsing (and timezone handling)
     next_midnight_iso = next_midnight_dt.isoformat()
     # DEBUG: Print next midnight
@@ -126,51 +129,76 @@ def index():
     # --- Update Daily Streaks (based on DB data) ---
     # This logic runs on page load if the actual day changed, resetting streaks if needed
     # The game-end logic handles the incrementing/resetting based on test mode or real time.
-    if not streak_test_mode and last_played_datetime and last_played_datetime.date() < effective_date:
-        yesterday_date = effective_date - timedelta(days=1)
-        if last_played_datetime.date() < yesterday_date: # Missed one or more real days
-            if stats['current_play_streak'] > 0:
-                 stats['current_play_streak'] = 0
-                 stats_updated_this_request = True
-            if stats['current_correct_streak'] > 0:
-                 stats['current_correct_streak'] = 0
-                 stats_updated_this_request = True
+    if not streak_test_mode and last_played_datetime:
+        # Make last_played_datetime timezone-aware (assuming it was stored naive as UTC)
+        if last_played_datetime.tzinfo is None:
+            last_played_datetime = last_played_datetime.replace(tzinfo=timezone.utc)
+
+        if last_played_datetime.date() < effective_date: # Compare dates directly
+            yesterday_date = effective_date - timedelta(days=1)
+            if last_played_datetime.date() < yesterday_date: # Missed one or more real days
+                if stats['current_play_streak'] > 0:
+                     stats['current_play_streak'] = 0
+                     stats_updated_this_request = True
+                if stats['current_correct_streak'] > 0:
+                     stats['current_correct_streak'] = 0
+                     stats_updated_this_request = True
 
     # --- Determine Today's Riddle ID ---
-    today_riddle_id = get_daily_riddle_id(date_to_use=effective_date)
-    # DEBUG: Print ID returned by function
-    print(f"[DEBUG] index: ID from get_daily_riddle_id = {today_riddle_id}")
+    total_riddles = Riddle.query.count()
+    if total_riddles == 0:
+        today_riddle_id = None
+        riddle_answer = ""
+        category = "N/A"
+        print("[DEBUG] index: No riddles found in DB.") # DEBUG No Riddles
+    else:
+        day_number_for_id = (effective_date - EPOCH_DATE).days
+        today_riddle_id = (day_number_for_id % total_riddles) + 1
+        # Fetch the actual riddle object to get the answer for the session
+        current_riddle_obj = get_riddle_by_id(today_riddle_id) # Use helper
+        if current_riddle_obj:
+            riddle_answer = current_riddle_obj.name.lower() # Store the correct answer for logic
+            category = current_riddle_obj.category
+        else:
+            # Handle case where ID is calculated but riddle doesn't exist (shouldn't happen)
+            today_riddle_id = None
+            riddle_answer = ""
+            category = "Error"
+            print(f"[ERROR] index: Riddle object not found for calculated ID {today_riddle_id}") # ERROR Riddle Object Not Found
 
     # --- Check if Game State needs reset ---
     session_riddle_id = session.get('riddle_id')
     session_test_offset = session.get('test_offset')
-    # Also reset if streak test mode changes
     session_streak_test_mode = session.get('streak_test_mode_flag')
+
+    # --- ADD DEBUG PRINTS HERE ---
+    print(f"[DEBUG] index: Checking for reset. Effective Date: {effective_date}")
+    print(f"[DEBUG] index: Checking for reset. Today's Riddle ID: {today_riddle_id}, Session Riddle ID: {session_riddle_id}")
+    print(f"[DEBUG] index: Checking for reset. Current Offset: {current_test_offset}, Session Offset: {session_test_offset}")
+    print(f"[DEBUG] index: Checking for reset. Current Streak Mode: {streak_test_mode}, Session Streak Mode: {session_streak_test_mode}")
+    # --- END DEBUG PRINTS ---
 
     if session_riddle_id != today_riddle_id or \
        session_test_offset != current_test_offset or \
        session_streak_test_mode != streak_test_mode:
-        print(f"[DEBUG] index: Resetting game state. Session ID={session_riddle_id}, Today ID={today_riddle_id}, Session Offset={session_test_offset}, Current Offset={current_test_offset}, Session Streak Mode={session_streak_test_mode}, Current Streak Mode={streak_test_mode}") # DEBUG Reset
-        # ... (reset game state logic remains the same) ...
-        session.pop('guessed_letters', None)
-        session.pop('incorrect_guesses', None)
+
+        # --- ADD DEBUG PRINT HERE ---
+        print(f"[DEBUG] index: *** RESETTING SESSION *** for player {player_uuid_str}")
+        # --- END DEBUG PRINT ---
+
+        # Reset game state in session
         session['riddle_id'] = today_riddle_id
-        session['test_offset'] = current_test_offset
-        session['streak_test_mode_flag'] = streak_test_mode # Store current mode
-        # ... (load riddle answer, reset incorrect_guesses) ...
-        if today_riddle_id is not None:
-            current_riddle = Riddle.query.get(today_riddle_id)
-            # *** Store the emoji NAME as the answer ***
-            session['riddle_answer'] = current_riddle.name.lower() if current_riddle else ""
-        else:
-             session['riddle_answer'] = ""
+        session['guessed_letters'] = []
         session['incorrect_guesses'] = 0
+        # Ensure the NEW answer is stored in the session after reset
+        session['riddle_answer'] = riddle_answer # Use the answer fetched above for today's riddle
+        session['test_offset'] = current_test_offset
+        session['streak_test_mode_flag'] = streak_test_mode
         session.modified = True
-        # Redirect, preserving parameters
-        redirect_params = {}
-        if current_test_offset is not None: redirect_params['day_offset'] = current_test_offset
-        if streak_test_mode: redirect_params['streak_test_mode'] = 'true'
+        print(f"[DEBUG] index: Session reset complete. New session riddle_id: {session.get('riddle_id')}, answer: '{session.get('riddle_answer')}'") # DEBUG Session Reset
+
         # --- Prepare Response for Redirect ---
+        # ... (redirect logic remains the same) ...
         response = make_response(redirect(url_for('main.index', day_offset=current_test_offset, streak_test_mode='true' if streak_test_mode else None)))
         if set_cookie_in_response:
             # Set persistent cookie on redirect
@@ -345,12 +373,13 @@ def make_guess():
 
         # --- 8. Update Stats in DB if Game Just Ended ---
         if is_game_now_over:
-            # This whole block might have an error, keep it inside the main try
-            now = datetime.now()
-            today = date.today()
+            now_utc = datetime.now(timezone.utc) # Use UTC now
+            today_utc = now_utc.date()           # Use UTC today
+
             current_test_offset = session.get('test_offset', 0)
             streak_test_mode = session.get('streak_test_mode_flag', False)
-            effective_date = today + timedelta(days=current_test_offset) if current_test_offset else today
+            # Determine effective date based on test mode or UTC
+            effective_date = EPOCH_DATE + timedelta(days=current_test_offset) if current_test_offset else today_utc
 
             player_stats_record = PlayerStats.query.get(player_uuid_str)
             new_record_created = False
@@ -382,9 +411,9 @@ def make_guess():
                 if last_played_datetime:
                     # ... (streak date comparison logic) ...
                     if streak_test_mode:
-                        time_delta = now - last_played_datetime
-                        one_minute_ago = now - timedelta(minutes=1)
-                        two_minutes_ago = now - timedelta(minutes=2)
+                        time_delta = now_utc - last_played_datetime
+                        one_minute_ago = now_utc - timedelta(minutes=1)
+                        two_minutes_ago = now_utc - timedelta(minutes=2)
                         if last_played_datetime >= one_minute_ago:
                              is_new_play_period = False
                         elif last_played_datetime >= two_minutes_ago:
@@ -406,7 +435,7 @@ def make_guess():
 
                 stats['longest_play_streak'] = max(stats['longest_play_streak'], stats['current_play_streak'])
                 stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
-                stats['last_played_datetime'] = now
+                stats['last_played_datetime'] = now_utc
                 # --- End stats dictionary update ---
 
                 # --- Update the DB Record ---
@@ -429,7 +458,7 @@ def make_guess():
                         'longest_play_streak': stats['longest_play_streak'],
                         'current_correct_streak': stats['current_correct_streak'],
                         'longest_correct_streak': stats['longest_correct_streak'],
-                        'last_played_datetime_str': stats['last_played_datetime'].strftime('%Y-%m-%d %H:%M:%S')
+                        'last_played_datetime_str': stats['last_played_datetime'].strftime('%Y-%m-%d %H:%M:%S UTC')
                     }
                 except Exception as e_commit:
                     db.session.rollback()
