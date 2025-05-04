@@ -242,9 +242,10 @@ def index():
             if last_played_datetime:
                 if streak_test_mode:
                     # --- Streak Test Mode Logic (Minutes) ---
-                    time_delta = effective_datetime - last_played_datetime
-                    one_minute_ago = effective_datetime - timedelta(minutes=1)
-                    two_minutes_ago = effective_datetime - timedelta(minutes=2)
+                    # *** CHANGE HERE ***
+                    time_delta = now - last_played_datetime # Use 'now'
+                    one_minute_ago = now - timedelta(minutes=1) # Use 'now'
+                    two_minutes_ago = now - timedelta(minutes=2) # Use 'now'
 
                     if last_played_datetime >= one_minute_ago:
                          is_new_play_period = False # Played within the last minute, not a new "day"
@@ -277,7 +278,8 @@ def index():
             stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
 
             # Store current datetime as last played
-            stats['last_played_datetime_str'] = effective_datetime.isoformat()
+            # *** CHANGE HERE ***
+            stats['last_played_datetime_str'] = now.isoformat() # Use 'now'
             stats_updated_this_request = True
 
             # Flash message
