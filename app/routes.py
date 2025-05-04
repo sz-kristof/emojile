@@ -1,12 +1,18 @@
-from flask import render_template, request, redirect, url_for, flash, Blueprint, session, jsonify # Add jsonify
+from flask import (
+    render_template, request, redirect, url_for, flash,
+    Blueprint, session, jsonify, make_response # Add make_response
+)
 from . import db
-from .models import Riddle
+# Import the new model and UUID library
+from .models import Riddle, PlayerStats
 import string
-from datetime import date, timedelta, datetime, time # Import time
+from datetime import date, timedelta, datetime, time
+import uuid # Import uuid library
 
 main = Blueprint('main', __name__)
 MAX_INCORRECT_GUESSES = 6
 EPOCH_DATE = date(2024, 1, 1)
+PLAYER_COOKIE_NAME = 'player_uuid'
 
 # --- get_daily_riddle_id function ---
 def get_daily_riddle_id(date_to_use=None):
@@ -47,6 +53,18 @@ def get_emoji(riddle_id):
 
 @main.route('/', methods=['GET'])
 def index():
+    # --- Get/Set Player UUID ---
+    player_uuid_str = request.cookies.get(PLAYER_COOKIE_NAME)
+    set_cookie_in_response = False
+    if not player_uuid_str:
+        player_uuid_str = str(uuid.uuid4())
+        set_cookie_in_response = True
+        print(f"[DEBUG] index: New player detected, generated UUID: {player_uuid_str}") # DEBUG New Player
+    else:
+        # Optional: Validate if it looks like a UUID? For now, assume it's okay.
+        print(f"[DEBUG] index: Existing player detected, UUID: {player_uuid_str}") # DEBUG Existing Player
+        pass
+
     # --- Determine Effective Date & Test Modes ---
     now = datetime.now()
     today = date.today()
@@ -74,28 +92,34 @@ def index():
     # DEBUG: Print next midnight
     print(f"[DEBUG] index: Next Midnight ISO = {next_midnight_iso}")
 
-    # --- Load/Initialize Persistent Stats ---
-    stats = {
-        'total_games': session.get('stat_total_games', 0),
-        'total_incorrect': session.get('stat_total_incorrect', 0),
-        'current_play_streak': session.get('stat_current_play_streak', 0),
-        'longest_play_streak': session.get('stat_longest_play_streak', 0),
-        'current_correct_streak': session.get('stat_current_correct_streak', 0),
-        'longest_correct_streak': session.get('stat_longest_correct_streak', 0),
-        # Change key and load datetime string
-        'last_played_datetime_str': session.get('stat_last_played_datetime')
-    }
-    last_played_datetime = None
-    if stats['last_played_datetime_str']:
-        try:
-            # Parse the stored datetime string
-            last_played_datetime = datetime.fromisoformat(stats['last_played_datetime_str'])
-        except ValueError:
-            stats['last_played_datetime_str'] = None # Clear invalid stored data
+    # --- Load Stats from DB ---
+    player_stats_record = PlayerStats.query.get(player_uuid_str)
+    if player_stats_record:
+        print(f"[DEBUG] index: Loaded stats from DB for {player_uuid_str}") # DEBUG DB Load
+        stats = {
+            'total_games': player_stats_record.total_games,
+            'total_incorrect': player_stats_record.total_incorrect,
+            'current_play_streak': player_stats_record.current_play_streak,
+            'longest_play_streak': player_stats_record.longest_play_streak,
+            'current_correct_streak': player_stats_record.current_correct_streak,
+            'longest_correct_streak': player_stats_record.longest_correct_streak,
+            # Store the actual datetime object now
+            'last_played_datetime': player_stats_record.last_played_datetime
+        }
+        last_played_datetime = stats['last_played_datetime'] # Use directly
+    else:
+        print(f"[DEBUG] index: No stats in DB for {player_uuid_str}, initializing.") # DEBUG DB Init
+        stats = { # Initialize with defaults
+            'total_games': 0, 'total_incorrect': 0, 'current_play_streak': 0,
+            'longest_play_streak': 0, 'current_correct_streak': 0,
+            'longest_correct_streak': 0, 'last_played_datetime': None
+        }
+        last_played_datetime = None
+        # We will create the DB record when the first game ends
 
-    stats_updated_this_request = False
+    stats_updated_this_request = False # Flag to know if we need to commit DB changes
 
-    # --- Update Daily Streaks (only if NOT in streak test mode and day changed) ---
+    # --- Update Daily Streaks (based on DB data) ---
     # This logic runs on page load if the actual day changed, resetting streaks if needed
     # The game-end logic handles the incrementing/resetting based on test mode or real time.
     if not streak_test_mode and last_played_datetime and last_played_datetime.date() < effective_date:
@@ -142,7 +166,13 @@ def index():
         redirect_params = {}
         if current_test_offset is not None: redirect_params['day_offset'] = current_test_offset
         if streak_test_mode: redirect_params['streak_test_mode'] = 'true'
-        return redirect(url_for('main.index', **redirect_params))
+        # --- Prepare Response for Redirect ---
+        response = make_response(redirect(url_for('main.index', day_offset=current_test_offset, streak_test_mode='true' if streak_test_mode else None)))
+        if set_cookie_in_response:
+            # Set persistent cookie on redirect
+            response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
+            print(f"[DEBUG] index: Setting cookie on redirect for {player_uuid_str}") # DEBUG Cookie Set Redirect
+        return response
 
     # --- Flash Test Mode Messages ---
     if test_date_override:
@@ -176,7 +206,8 @@ def index():
     elif not riddle_answer: # If no ID and no answer, show empty state
          print("[DEBUG] index: No riddle ID and no answer in session, rendering empty state.") # DEBUG Empty State
          # Pass None explicitly for riddle_id here, but still pass next midnight
-         return render_template('index.html',
+         # --- Prepare Response for Empty State ---
+         response = make_response(render_template('index.html',
                                 riddle_id=None,
                                 category=None,
                                 answer_display="",
@@ -184,7 +215,11 @@ def index():
                                 avg_incorrect=0,
                                 streak_test_mode=streak_test_mode,
                                 next_midnight_iso=next_midnight_iso # Pass next midnight
-                                )
+                                ))
+         if set_cookie_in_response:
+             response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
+             print(f"[DEBUG] index: Setting cookie on empty state render for {player_uuid_str}") # DEBUG Cookie Set Empty
+         return response
 
 
     if today_riddle_id is None:
@@ -233,43 +268,50 @@ def index():
 
         # --- Update Stats if game just ended ---
         if is_game_now_over:
+            # Load record again (or prepare to create)
+            player_stats_record = PlayerStats.query.get(player_uuid_str)
+            if not player_stats_record:
+                # Create new record if it's the first game ending for this player
+                player_stats_record = PlayerStats(player_uuid=player_uuid_str)
+                db.session.add(player_stats_record)
+                print(f"[DEBUG] index: Creating new PlayerStats record in DB for {player_uuid_str}") # DEBUG DB Create
+
+            # Update stats dictionary first
             stats['total_games'] += 1
             stats['total_incorrect'] += incorrect_guesses
 
             played_yesterday = False
-            is_new_play_period = True # Assume it's a new period unless proven otherwise
+            is_new_play_period = True
 
-            if last_played_datetime:
+            # Use last_played_datetime directly from stats dict
+            if stats['last_played_datetime']:
+                # --- Streak Test Mode Logic (Minutes) ---
+                # *** CHANGE HERE ***
                 if streak_test_mode:
-                    # --- Streak Test Mode Logic (Minutes) ---
-                    # *** CHANGE HERE ***
-                    time_delta = now - last_played_datetime # Use 'now'
+                    time_delta = now - stats['last_played_datetime'] # Use 'now'
                     one_minute_ago = now - timedelta(minutes=1) # Use 'now'
                     two_minutes_ago = now - timedelta(minutes=2) # Use 'now'
 
-                    if last_played_datetime >= one_minute_ago:
+                    if stats['last_played_datetime'] >= one_minute_ago:
                          is_new_play_period = False # Played within the last minute, not a new "day"
-                    elif last_played_datetime >= two_minutes_ago:
+                    elif stats['last_played_datetime'] >= two_minutes_ago:
                          played_yesterday = True # Played 1-2 minutes ago ("yesterday")
                     # else: played > 2 mins ago (missed a "day") -> handled by is_new_play_period=True
 
                 else:
                     # --- Normal Mode Logic (Days) ---
                     yesterday_date = effective_date - timedelta(days=1)
-                    if last_played_datetime.date() == effective_date:
+                    if stats['last_played_datetime'].date() == effective_date:
                         is_new_play_period = False # Already played today
-                    elif last_played_datetime.date() == yesterday_date:
+                    elif stats['last_played_datetime'].date() == yesterday_date:
                         played_yesterday = True # Played yesterday
 
             # --- Update Streaks based on flags ---
             if is_new_play_period:
                 if played_yesterday:
                     stats['current_play_streak'] += 1
-                    if is_win:
-                        stats['current_correct_streak'] += 1
-                    else:
-                        stats['current_correct_streak'] = 0 # Reset correct streak on loss
-                else: # First play or missed period
+                    stats['current_correct_streak'] = stats['current_correct_streak'] + 1 if is_win else 0
+                else:
                     stats['current_play_streak'] = 1
                     stats['current_correct_streak'] = 1 if is_win else 0
             # else: played within same period, streaks don't change
@@ -277,34 +319,45 @@ def index():
             stats['longest_play_streak'] = max(stats['longest_play_streak'], stats['current_play_streak'])
             stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
 
-            # Store current datetime as last played
-            # *** CHANGE HERE ***
-            stats['last_played_datetime_str'] = now.isoformat() # Use 'now'
-            stats_updated_this_request = True
+            # Store current datetime as last played (in stats dict)
+            stats['last_played_datetime'] = now # Store the datetime object
+            stats_updated_this_request = True # Mark for DB update
+
+            # --- Update the DB Record from the stats dict ---
+            player_stats_record.total_games = stats['total_games']
+            player_stats_record.total_incorrect = stats['total_incorrect']
+            player_stats_record.current_play_streak = stats['current_play_streak']
+            player_stats_record.longest_play_streak = stats['longest_play_streak']
+            player_stats_record.current_correct_streak = stats['current_correct_streak']
+            player_stats_record.longest_correct_streak = stats['longest_correct_streak']
+            player_stats_record.last_played_datetime = stats['last_played_datetime']
+            print(f"[DEBUG] index: Updating DB record for {player_uuid_str}") # DEBUG DB Update
 
             # Flash message
             if is_win: flash(f"Correct! The answer was '{riddle_answer.upper()}'. 🎉 Come back tomorrow!", 'success')
             else: flash(f"Too many guesses! The answer was '{riddle_answer.upper()}'. 😥 Come back tomorrow!", 'danger')
 
 
-    # --- Save Updated Stats to Session ---
+    # --- Commit DB Changes if needed ---
     if stats_updated_this_request:
-        session['stat_total_games'] = stats['total_games']
-        session['stat_total_incorrect'] = stats['total_incorrect']
-        session['stat_current_play_streak'] = stats['current_play_streak']
-        session['stat_longest_play_streak'] = stats['longest_play_streak']
-        session['stat_current_correct_streak'] = stats['current_correct_streak']
-        session['stat_longest_correct_streak'] = stats['longest_correct_streak']
-        # Save datetime string
-        session['stat_last_played_datetime'] = stats['last_played_datetime_str']
-        session.modified = True
+        try:
+            db.session.commit()
+            print(f"[DEBUG] index: Committed DB changes for {player_uuid_str}") # DEBUG DB Commit
+        except Exception as e:
+            db.session.rollback()
+            print(f"[ERROR] index: Failed to commit DB changes for {player_uuid_str}: {e}") # DEBUG DB Error
+            flash("An error occurred saving your statistics.", "danger")
+
 
     # --- Redirect if a guess was processed ---
     if redirect_after_guess:
-        redirect_params = {}
-        if current_test_offset is not None: redirect_params['day_offset'] = current_test_offset
-        if streak_test_mode: redirect_params['streak_test_mode'] = 'true'
-        return redirect(url_for('main.index', **redirect_params))
+        # --- Prepare Response for Redirect ---
+        response = make_response(redirect(url_for('main.index', day_offset=current_test_offset, streak_test_mode='true' if streak_test_mode else None)))
+        if set_cookie_in_response:
+            # Set persistent cookie on redirect
+            response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
+            print(f"[DEBUG] index: Setting cookie on guess redirect for {player_uuid_str}") # DEBUG Cookie Set Guess Redirect
+        return response
 
     # --- Prepare Data for Final Template Render ---
     # ... (calculate game_over, avg_incorrect) ...
@@ -316,17 +369,24 @@ def index():
     # DEBUG: Print final values being passed to template
     print(f"[DEBUG] index: Rendering template with riddle_id={today_riddle_id}, category='{category}', answer_display='{riddle_answer}', next_midnight_iso='{next_midnight_iso}'")
 
-    return render_template('index.html',
-                           riddle_id=today_riddle_id, # Pass ID for JS to fetch emoji
-                           category=category,         # Pass category
-                           answer_display=riddle_answer, # Pass the name for answer tiles
+    # --- Prepare Final Response ---
+    response = make_response(render_template('index.html',
+                           riddle_id=today_riddle_id,
+                           category=category,
+                           answer_display=riddle_answer,
                            guessed_letters=guessed_letters_set,
                            alphabet=alphabet,
                            incorrect_guesses=incorrect_guesses,
                            max_guesses=MAX_INCORRECT_GUESSES,
                            game_over=game_over,
-                           stats=stats,
+                           stats=stats, # Pass the loaded/updated stats dict
                            avg_incorrect=avg_incorrect,
-                           streak_test_mode=streak_test_mode, # Pass flag to template
-                           next_midnight_iso=next_midnight_iso # Pass next midnight
-                           )
+                           streak_test_mode=streak_test_mode,
+                           next_midnight_iso=next_midnight_iso
+                           ))
+    if set_cookie_in_response:
+        # Set persistent cookie on final render if needed
+        response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
+        print(f"[DEBUG] index: Setting cookie on final render for {player_uuid_str}") # DEBUG Cookie Set Final Render
+
+    return response

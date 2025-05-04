@@ -1,6 +1,7 @@
 from . import db
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Index
+from datetime import datetime # Add datetime import
 
 # Define the new Riddle model structure
 class Riddle(db.Model):
@@ -11,6 +12,22 @@ class Riddle(db.Model):
 
     def __repr__(self):
         return f'<Riddle {self.emoji} - {self.name}>'
+
+# --- NEW PlayerStats Model ---
+class PlayerStats(db.Model):
+    # Use a UUID string as the primary key
+    player_uuid = db.Column(db.String(36), primary_key=True)
+    total_games = db.Column(db.Integer, default=0, nullable=False)
+    total_incorrect = db.Column(db.Integer, default=0, nullable=False)
+    current_play_streak = db.Column(db.Integer, default=0, nullable=False)
+    longest_play_streak = db.Column(db.Integer, default=0, nullable=False)
+    current_correct_streak = db.Column(db.Integer, default=0, nullable=False)
+    longest_correct_streak = db.Column(db.Integer, default=0, nullable=False)
+    # Store last played time as datetime object
+    last_played_datetime = db.Column(db.DateTime, nullable=True)
+
+    def __repr__(self):
+        return f'<PlayerStats {self.player_uuid}>'
 
 # Sample list of emojis with names and categories
 # (You'll want a much larger list from a reliable source like Unicode CLDR or a library)
