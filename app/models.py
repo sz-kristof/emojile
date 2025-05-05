@@ -86,6 +86,7 @@ initial_emojis = [
     {"emoji": "🌱", "name": "Seedling", "category": "Animals & Nature"},
     {"emoji": "🌍", "name": "Earth Globe Americas", "category": "Travel & Places"},
     {"emoji": "⏰", "name": "Alarm Clock", "category": "Objects"},
+    {"emoji": "✨", "name": "Sparkles", "category": "Activities"},
 ]
 
 def add_initial_riddles():
