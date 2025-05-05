@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, Blueprint
 from config import Config
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -6,6 +6,7 @@ import os # Import os for secret key generation
 
 db = SQLAlchemy()
 migrate = Migrate()
+main = Blueprint('main', __name__) # Define the blueprint object
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -20,8 +21,8 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
 
     # Import and register the blueprint
-    from .routes import main as main_blueprint # Import the blueprint
-    app.register_blueprint(main_blueprint) # Register it with the app
+    from . import routes, models # Import the blueprint and models
+    app.register_blueprint(main) # Register it with the app
 
     with app.app_context():
         from . import models # Import models

@@ -1,195 +1,120 @@
-from flask import (
-    render_template, request, redirect, url_for, flash,
-    Blueprint, session, jsonify, make_response # Add make_response
-)
+from flask import render_template, session, redirect, url_for, flash, request, jsonify, make_response
+from . import main 
 from . import db
-# Import the new model and UUID library
-from .models import Riddle, PlayerStats
-import string
-from datetime import date, timedelta, datetime, time, timezone # Import timezone
-import uuid # Import uuid library
+from .models import Riddle, PlayerStats # Import models
+from datetime import datetime, timedelta, date, timezone # Ensure timezone is imported
+import uuid
+from sqlalchemy import func # Import func for max()
 
-main = Blueprint('main', __name__)
-MAX_INCORRECT_GUESSES = 3
-EPOCH_DATE = date(2024, 1, 1)
-PLAYER_COOKIE_NAME = 'player_uuid'
+# Define the epoch date (adjust if needed, e.g., your launch date)
+# EPOCH_DATE = date(2024, 1, 1) # Example: January 1st, 2024
+EPOCH_DATE = date(2025, 5, 5) # Set to today as per your last change
 
-# --- get_daily_riddle_id function ---
-def get_daily_riddle_id(date_to_use=None):
-    if date_to_use is None: date_to_use = date.today()
-    target_day_number = (date_to_use - EPOCH_DATE).days # Day number starts from 0
-    print(f"[DEBUG] get_daily_riddle_id: Target Day Number = {target_day_number}")
-    riddle = Riddle.query.filter_by(day_number=target_day_number).first()
-    if riddle:
-        print(f"[DEBUG] get_daily_riddle_id: Found Riddle ID = {riddle.id} for day {target_day_number}")
-        return riddle.id
-    else:
-        # Handle case where no riddle is assigned to this day yet
-        # Option 1: Return None (as it does now)
-        # Option 2: Wrap around using modulo on the *count* of riddles with assigned day_numbers
-        total_assigned_riddles = Riddle.query.filter(Riddle.day_number.isnot(None)).count()
-        if total_assigned_riddles > 0:
-            wrapped_day_number = target_day_number % total_assigned_riddles
-            riddle_wrapped = Riddle.query.filter_by(day_number=wrapped_day_number).first()
-            if riddle_wrapped:
-                 print(f"[DEBUG] get_daily_riddle_id: No riddle for day {target_day_number}, wrapped to day {wrapped_day_number}, ID = {riddle_wrapped.id}")
-                 return riddle_wrapped.id
-        print(f"[DEBUG] get_daily_riddle_id: No riddle found for day {target_day_number} (or wrapped).")
-        return None
+# Define constants (if not already defined elsewhere)
+MAX_GUESSES = 3
+ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-# --- NEW API Endpoint ---
-@main.route('/api/get-emoji/<int:riddle_id>')
-def get_emoji(riddle_id):
-    # Basic security: Check if the requested ID matches the one in the session
-    # This prevents users from just iterating through /api/get-emoji/1, /api/get-emoji/2 etc.
-    # unless they are on the correct day/test offset for that riddle.
-    session_riddle_id = session.get('riddle_id')
-    print(f"[DEBUG] API get_emoji: Requested ID = {riddle_id}, Session ID = {session_riddle_id}") # DEBUG API
-    if riddle_id != session_riddle_id:
-        # Return an empty response or an error if the ID doesn't match the session's current riddle
-        return jsonify({"error": "Not authorized or invalid riddle ID"}), 403 # Forbidden
-
-    riddle = Riddle.query.get(riddle_id)
-    if riddle:
-        return jsonify({"emoji": riddle.emoji})
-    else:
-        return jsonify({"error": "Riddle not found"}), 404 # Not Found
-
+# --- Helper Functions (if any, like get_or_create_player) ---
+# ... (keep existing helper functions) ...
 
 @main.route('/', methods=['GET'])
 def index():
-    # --- Get/Set Player UUID ---
-    player_uuid_str = request.cookies.get(PLAYER_COOKIE_NAME)
-    set_cookie_in_response = False
-    if not player_uuid_str:
-        player_uuid_str = str(uuid.uuid4())
-        set_cookie_in_response = True
-        print(f"[DEBUG] index: New player detected, generated UUID: {player_uuid_str}") # DEBUG New Player
+    # --- Player UUID Handling ---
+    player_uuid = session.get('player_uuid')
+    if not player_uuid:
+        player_uuid = str(uuid.uuid4())
+        session['player_uuid'] = player_uuid
+        print(f"[DEBUG] index: New player detected, assigning UUID: {player_uuid}")
+        show_stats_modal = False # Don't show stats modal on first visit
     else:
-        # Optional: Validate if it looks like a UUID? For now, assume it's okay.
-        print(f"[DEBUG] index: Existing player detected, UUID: {player_uuid_str}") # DEBUG Existing Player
-        pass
+        print(f"[DEBUG] index: Existing player detected, UUID: {player_uuid}")
+        show_stats_modal = request.args.get('stats') == '1'
 
-    # --- Determine Effective Date & Test Modes ---
-    # Use UTC for consistent day rollover
-    now_utc = datetime.now(timezone.utc) # Get current time in UTC
-    today_utc = now_utc.date()           # Get current date in UTC
+    # --- Date and Riddle Selection ---
+    # Use UTC for consistency
+    now_utc = datetime.now(timezone.utc)
+    effective_date = now_utc.date() # Default to today UTC
 
-    test_date_override = None
-    current_test_offset = request.args.get('day_offset')
-    streak_test_mode = request.args.get('streak_test_mode') == 'true' # Check for streak test mode
+    # --- Testing Offset ---
+    current_test_offset = request.args.get('test_offset', type=int)
+    streak_test_mode = request.args.get('streak_test_mode', 'false').lower() == 'true'
 
-    try:
-        if current_test_offset is not None:
-            day_offset = int(current_test_offset)
-            test_date_override = EPOCH_DATE + timedelta(days=day_offset)
-    except (ValueError, TypeError):
-        flash("Invalid 'day_offset' parameter.", "warning")
-        current_test_offset = None
+    if current_test_offset is not None:
+        effective_date = effective_date + timedelta(days=current_test_offset)
+        print(f"[DEBUG] index: Applying test offset: {current_test_offset} days. Effective Date: {effective_date}")
 
-    # Use UTC date unless overridden by test mode
-    effective_date = test_date_override if test_date_override else today_utc
-    # DEBUG: Print effective date
     print(f"[DEBUG] index: Effective Date (UTC based) = {effective_date}")
+    target_day_number = (effective_date - EPOCH_DATE).days
+    print(f"[DEBUG] index: Target Day Number = {target_day_number}")
 
-    # --- Calculate Day Number ---
-    day_number = (effective_date - EPOCH_DATE).days + 1 # Add 1 to start from Day 1
-    print(f"[DEBUG] index: Day Number = {day_number}") # DEBUG Day Number
-
-    # --- Calculate Next Midnight ---
-    # Combine the effective_date with midnight time, then add one day
-    next_midnight_dt = datetime.combine(effective_date, time.min, tzinfo=timezone.utc if not test_date_override else None) + timedelta(days=1)
-    # Convert to ISO format string for easier JS parsing (and timezone handling)
-    next_midnight_iso = next_midnight_dt.isoformat()
-    # DEBUG: Print next midnight
+    # Calculate next midnight for countdown timer
+    next_midnight_utc = datetime.combine(effective_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+    next_midnight_iso = next_midnight_utc.isoformat()
     print(f"[DEBUG] index: Next Midnight ISO = {next_midnight_iso}")
 
-    # --- Load Stats from DB ---
-    player_stats_record = PlayerStats.query.get(player_uuid_str)
-    if player_stats_record:
-        print(f"[DEBUG] index: Loaded stats from DB for {player_uuid_str}") # DEBUG DB Load
-        stats = {
-            'total_games': player_stats_record.total_games,
-            'total_incorrect': player_stats_record.total_incorrect,
-            'current_play_streak': player_stats_record.current_play_streak,
-            'longest_play_streak': player_stats_record.longest_play_streak,
-            'current_correct_streak': player_stats_record.current_correct_streak,
-            'longest_correct_streak': player_stats_record.longest_correct_streak,
-            # Store the actual datetime object now
-            'last_played_datetime': player_stats_record.last_played_datetime
-        }
-        last_played_datetime = stats['last_played_datetime'] # Use directly
+    # --- Player Stats Loading ---
+    player_stats = PlayerStats.query.get(player_uuid)
+    if not player_stats:
+        player_stats = PlayerStats(player_uuid=player_uuid)
+        db.session.add(player_stats)
+        # Commit immediately if new so it exists for later updates
+        try:
+            db.session.commit()
+            print(f"[DEBUG] index: Created new stats entry in DB for {player_uuid}")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[ERROR] index: Failed to create initial stats for {player_uuid}: {e}")
+            flash("Error initializing player statistics.", "danger")
+            # Handle error appropriately, maybe render an error page or default values
+            player_stats = None # Ensure it's None if creation failed
     else:
-        print(f"[DEBUG] index: No stats in DB for {player_uuid_str}, initializing.") # DEBUG DB Init
-        stats = { # Initialize with defaults
-            'total_games': 0, 'total_incorrect': 0, 'current_play_streak': 0,
-            'longest_play_streak': 0, 'current_correct_streak': 0,
-            'longest_correct_streak': 0, 'last_played_datetime': None
-        }
-        last_played_datetime = None
-        # We will create the DB record when the first game ends
+        print(f"[DEBUG] index: Loaded stats from DB for {player_uuid}")
 
-    stats_updated_this_request = False # Flag to know if we need to commit DB changes
+    # Convert stats to dictionary for template (handle None case)
+    player_stats_dict = {
+        'total_games': player_stats.total_games if player_stats else 0,
+        'total_incorrect': player_stats.total_incorrect if player_stats else 0,
+        'current_play_streak': player_stats.current_play_streak if player_stats else 0,
+        'longest_play_streak': player_stats.longest_play_streak if player_stats else 0,
+        'current_correct_streak': player_stats.current_correct_streak if player_stats else 0,
+        'longest_correct_streak': player_stats.longest_correct_streak if player_stats else 0,
+        'last_played_date': player_stats.last_played_datetime.date().isoformat() if player_stats and player_stats.last_played_datetime else "Never"
+    }
 
-    # --- Update Daily Streaks (based on DB data) ---
-    # This logic runs on page load if the actual day changed, resetting streaks if needed
-    # The game-end logic handles the incrementing/resetting based on test mode or real time.
-    if not streak_test_mode and last_played_datetime:
-        # Make last_played_datetime timezone-aware (assuming it was stored naive as UTC)
-        if last_played_datetime.tzinfo is None:
-            last_played_datetime = last_played_datetime.replace(tzinfo=timezone.utc)
 
-        if last_played_datetime.date() < effective_date: # Compare dates directly
-            yesterday_date = effective_date - timedelta(days=1)
-            if last_played_datetime.date() < yesterday_date: # Missed one or more real days
-                if stats['current_play_streak'] > 0:
-                     stats['current_play_streak'] = 0
-                     stats_updated_this_request = True
-                if stats['current_correct_streak'] > 0:
-                     stats['current_correct_streak'] = 0
-                     stats_updated_this_request = True
-
-    # --- Determine Today's Riddle ID & Details ---
-    total_riddles = Riddle.query.count() # Keep this check maybe
+    # --- Find Today's Riddle ---
     today_riddle_id = None
-    current_riddle_obj = None
     riddle_answer = ""
     category = ""
+    current_riddle_obj = None
 
-    if total_riddles == 0:
-        print("[DEBUG] index: No riddles found in DB.")
-        flash("No riddles available in the database.", "warning")
+    # Find the highest assigned day_number to determine the cycle length
+    max_assigned_day_result = db.session.query(func.max(Riddle.day_number)).scalar()
+
+    if max_assigned_day_result is None:
+        # Case 1: No riddles have day numbers assigned at all
+        print("[ERROR] index: No riddles found with assigned day numbers in the database.")
+        flash("No riddles are currently available. Please check back later.", "warning")
     else:
-        # --- NEW SELECTION LOGIC using day_number ---
-        target_day_number = (effective_date - EPOCH_DATE).days # Day number starts from 0
-        print(f"[DEBUG] index: Target Day Number = {target_day_number}")
-        current_riddle_obj = Riddle.query.filter_by(day_number=target_day_number).first()
+        # Case 2: Riddles exist, determine which one to show
+        cycle_length = max_assigned_day_result + 1 # e.g., if max is 48, length is 49 (0-48)
+        effective_day_number = target_day_number % cycle_length # Wrap the target day using modulo
+
+        print(f"[DEBUG] index: Max assigned day = {max_assigned_day_result}, Cycle length = {cycle_length}, Effective day number = {effective_day_number}")
+
+        # Try to find the riddle for the effective day number
+        current_riddle_obj = Riddle.query.filter_by(day_number=effective_day_number).first()
 
         if current_riddle_obj:
             today_riddle_id = current_riddle_obj.id
             riddle_answer = current_riddle_obj.name.lower()
             category = current_riddle_obj.category
-            print(f"[DEBUG] index: Found riddle ID {today_riddle_id} ('{riddle_answer}') for day {target_day_number}")
+            print(f"[DEBUG] index: Found riddle ID {today_riddle_id} ('{riddle_answer}') for effective day {effective_day_number} (Target day {target_day_number})")
         else:
-            # Handle case where no riddle is assigned for today yet
-            # Option 1: Show error/message
-            # flash(f"No riddle assigned for today (Day {target_day_number}). Check back later.", "info")
-            # Option 2: Wrap around (use modulo on count of assigned riddles)
-            total_assigned_riddles = Riddle.query.filter(Riddle.day_number.isnot(None)).count()
-            if total_assigned_riddles > 0:
-                wrapped_day_number = target_day_number % total_assigned_riddles
-                current_riddle_obj = Riddle.query.filter_by(day_number=wrapped_day_number).first()
-                if current_riddle_obj:
-                    today_riddle_id = current_riddle_obj.id
-                    riddle_answer = current_riddle_obj.name.lower()
-                    category = current_riddle_obj.category
-                    print(f"[DEBUG] index: No riddle for day {target_day_number}, wrapped to day {wrapped_day_number}, ID = {today_riddle_id}")
-                else:
-                     print(f"[ERROR] index: No riddle found for day {target_day_number} or wrapped day {wrapped_day_number}.")
-                     flash("Error loading today's riddle.", "danger")
-            else:
-                 print(f"[ERROR] index: No riddles with assigned day numbers found.")
-                 flash("No riddles available.", "warning")
+            # This case should ideally not happen if day_numbers are sequential from 0
+            # But handle it just in case there's a gap or error
+            print(f"[ERROR] index: Could not find riddle for effective day number {effective_day_number} even though max assigned day is {max_assigned_day_result}.")
+            flash(f"Error loading today's riddle (Code: EFF_DAY_MISS). Please contact support.", "danger")
 
 
     # --- Check if Game State needs reset ---
@@ -197,333 +122,219 @@ def index():
     session_test_offset = session.get('test_offset')
     session_streak_test_mode = session.get('streak_test_mode_flag')
 
-    # --- ADD DEBUG PRINTS HERE ---
     print(f"[DEBUG] index: Checking for reset. Effective Date: {effective_date}")
     print(f"[DEBUG] index: Checking for reset. Today's Riddle ID: {today_riddle_id}, Session Riddle ID: {session_riddle_id}")
     print(f"[DEBUG] index: Checking for reset. Current Offset: {current_test_offset}, Session Offset: {session_test_offset}")
     print(f"[DEBUG] index: Checking for reset. Current Streak Mode: {streak_test_mode}, Session Streak Mode: {session_streak_test_mode}")
-    # --- END DEBUG PRINTS ---
 
+    needs_reset = False
+    # Reset if today's riddle is different from session, or if test params changed
     if session_riddle_id != today_riddle_id or \
        session_test_offset != current_test_offset or \
        session_streak_test_mode != streak_test_mode:
+           needs_reset = True
+           print(f"[DEBUG] index: Resetting session due to change in riddle ID or test parameters.")
+    # Also reset if there's simply no riddle today (today_riddle_id is None) and session still holds old data
+    elif today_riddle_id is None and (session_riddle_id is not None or session.get('guesses')):
+           needs_reset = True
+           print("[DEBUG] index: Resetting session because no riddle is assigned/found for today.")
 
-        # --- ADD DEBUG PRINT HERE ---
-        print(f"[DEBUG] index: *** RESETTING SESSION *** for player {player_uuid_str}")
-        # --- END DEBUG PRINT ---
 
-        # Reset game state in session
+    if needs_reset:
+        print(f"[DEBUG] index: *** RESETTING SESSION *** for player {player_uuid}")
+        # Clear relevant game state parts
+        session.pop('guesses', None)
+        session.pop('results', None)
+        session.pop('game_over', None)
+        session.pop('is_win', None)
+        session.pop('share_text', None)
+        # Store the new state (even if riddle_id is None)
         session['riddle_id'] = today_riddle_id
-        session['guessed_letters'] = []
-        session['incorrect_guesses'] = 0
-        # Ensure the NEW answer is stored in the session after reset
-        session['riddle_answer'] = riddle_answer # Use the answer fetched above for today's riddle
+        session['riddle_answer'] = riddle_answer # Will be "" if today_riddle_id is None
         session['test_offset'] = current_test_offset
         session['streak_test_mode_flag'] = streak_test_mode
-        session.modified = True
-        print(f"[DEBUG] index: Session reset complete. New session riddle_id: {session.get('riddle_id')}, answer: '{session.get('riddle_answer')}'") # DEBUG Session Reset
-
-        # --- Prepare Response for Redirect ---
-        # ... (redirect logic remains the same) ...
-        response = make_response(redirect(url_for('main.index', day_offset=current_test_offset, streak_test_mode='true' if streak_test_mode else None)))
-        if set_cookie_in_response:
-            # Set persistent cookie on redirect
-            response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
-            print(f"[DEBUG] index: Setting cookie on redirect for {player_uuid_str}") # DEBUG Cookie Set Redirect
-        session.permanent = True # <<< ADD THIS LINE
-        return response
-
-    # --- Flash Test Mode Messages ---
-    if test_date_override:
-         flash(f"TEST MODE: Simulating date {test_date_override.isoformat()} (Day Offset: {current_test_offset})", "info")
-    if streak_test_mode:
-         flash(f"STREAK TEST MODE: Streaks update based on minutes.", "warning")
+        # Store the actual target day number for potential future reference/debugging
+        session['last_target_day_number'] = target_day_number
+        print(f"[DEBUG] index: Session reset complete. New session riddle_id: {session.get('riddle_id')}, answer: '{session.get('riddle_answer')}'")
+        # Redirect after reset to ensure clean state on reload
+        # Preserve query parameters in redirect
+        redirect_url = url_for('main.index', **request.args)
+        return redirect(redirect_url)
 
 
-    # --- Load Current Game State ---
-    # ... (load guessed_letters_set, incorrect_guesses, riddle_answer) ...
-    guessed_letters_set = set(session.get('guessed_letters', []))
-    incorrect_guesses = session.get('incorrect_guesses', 0)
-    # *** riddle_answer now holds the emoji name ***
-    riddle_answer = session.get('riddle_answer', "")
+    # --- Load Game State (if not reset) ---
+    guesses = session.get('guesses', [])
+    results = session.get('results', [])
+    game_over = session.get('game_over', False)
+    is_win = session.get('is_win', False)
+    share_text = session.get('share_text', "")
 
-    # Fetch minimal riddle info needed for display (category, ID)
-    category = ""
-    # DEBUG: Check ID before fetching category
-    print(f"[DEBUG] index: today_riddle_id before fetching category = {today_riddle_id}")
-    if today_riddle_id is not None:
-        riddle_minimal = Riddle.query.with_entities(Riddle.category).filter_by(id=today_riddle_id).first()
-        if riddle_minimal:
-            category = riddle_minimal.category
-            print(f"[DEBUG] index: Found category '{category}' for ID {today_riddle_id}") # DEBUG Category
-        else: # Handle case where ID is invalid
-            print(f"[DEBUG] index: Riddle with ID {today_riddle_id} not found in DB for category fetch.") # DEBUG Invalid ID
-            flash("Error loading today's riddle details.", "danger")
-            session.pop('riddle_id', None)
-            session.pop('riddle_answer', None)
-            return redirect(url_for('main.index'))
-    elif not riddle_answer: # If no ID and no answer, show empty state
-         print("[DEBUG] index: No riddle ID and no answer in session, rendering empty state.") # DEBUG Empty State
-         # Pass None explicitly for riddle_id here, but still pass next midnight
-         # --- Prepare Response for Empty State ---
-         response = make_response(render_template('index.html',
-                                riddle_id=None,
-                                category=None,
-                                answer_display="",
-                                stats=stats,
-                                avg_incorrect=0,
-                                streak_test_mode=streak_test_mode,
-                                next_midnight_iso=next_midnight_iso # Pass next midnight
-                                ))
-         if set_cookie_in_response:
-             response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
-             print(f"[DEBUG] index: Setting cookie on empty state render for {player_uuid_str}") # DEBUG Cookie Set Empty
-         session.permanent = True # <<< ADD THIS LINE
-         return response
+    # --- Define variables needed by the template ---
+    guessed_letters = set(g.lower() for g in guesses) # Set of guessed letters
+    incorrect_guesses = len([g for g in guesses if g.lower() not in (riddle_answer or "").lower()]) # Count incorrect guesses
 
+    # --- Render Template ---
+    answer_display = riddle_answer if riddle_answer else "N/A"
+    print(f"[DEBUG] index: Rendering template with riddle_id={today_riddle_id}, category='{category}', answer_display='{answer_display}', next_midnight_iso='{next_midnight_iso}', game_over={game_over}, is_win={is_win}")
 
-    if today_riddle_id is None:
-        # ... (handle no riddles) ...
-        return render_template('index.html', riddle=None, stats=stats, avg_incorrect=0, streak_test_mode=streak_test_mode)
-
-    # Fetch the full riddle object for display (emoji, category)
-    current_riddle = Riddle.query.get(today_riddle_id)
-    if not current_riddle: # Handle case where ID is invalid somehow
-         flash("Error loading today's riddle.", "danger")
-         # Clear potentially bad session data
-         session.pop('riddle_id', None)
-         session.pop('riddle_answer', None)
-         # Redirect to try again
-         return redirect(url_for('main.index'))
-
-
-    was_game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or \
-                    (riddle_answer and {char for char in riddle_answer if char.isalpha()}.issubset(guessed_letters_set))
-
-    # --- Commit DB Changes if needed ---
-    if stats_updated_this_request:
-        try:
-            db.session.commit()
-            print(f"[DEBUG] index: Committed DB changes for {player_uuid_str}") # DEBUG DB Commit
-        except Exception as e:
-            db.session.rollback()
-            print(f"[ERROR] index: Failed to commit DB changes for {player_uuid_str}: {e}") # DEBUG DB Error
-            flash("An error occurred saving your statistics.", "danger")
-
-
-    # --- Prepare Data for Final Template Render ---
-    # ... (calculate avg_incorrect) ...
-    game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or \
-                (riddle_answer and {char for char in riddle_answer if char.isalpha()}.issubset(guessed_letters_set))
-    # Calculate is_win status based on loaded state if game is over
-    avg_incorrect = (stats['total_incorrect'] / stats['total_games']) if stats['total_games'] > 0 else 0
-    # --- DEFINE answer_chars HERE ---
-    answer_chars = {char for char in riddle_answer if char.isalpha()} if riddle_answer else set()
-    # --- Use answer_chars ---
-    is_win = game_over and answer_chars.issubset(guessed_letters_set) if riddle_answer else False
-
-    alphabet = string.ascii_uppercase
-
-    # DEBUG: Print final values being passed to template
-    print(f"[DEBUG] index: Rendering template with riddle_id={today_riddle_id}, category='{category}', answer_display='{riddle_answer}', next_midnight_iso='{next_midnight_iso}', game_over={game_over}, is_win={is_win}") # Added game_over/is_win
-
-    # --- Prepare Final Response ---
-    response = make_response(render_template('index.html',
-                           riddle_id=today_riddle_id,
-                           category=category,
-                           answer_display=riddle_answer,
-                           guessed_letters=guessed_letters_set,
-                           alphabet=alphabet,
-                           incorrect_guesses=incorrect_guesses,
-                           max_guesses=MAX_INCORRECT_GUESSES,
+    return render_template('index.html',
+                           guesses=guesses,
+                           results=results,
+                           answer_display=answer_display,
+                           category=category if category else "N/A",
                            game_over=game_over,
-                           is_win=is_win, # Pass is_win
-                           stats=stats, # Pass the loaded/updated stats dict
-                           avg_incorrect=avg_incorrect, # Keep avg_incorrect
-                           streak_test_mode=streak_test_mode,
+                           is_win=is_win,
+                           share_text=share_text,
+                           current_riddle_id=today_riddle_id, # Pass the ID (or None)
                            next_midnight_iso=next_midnight_iso,
-                           day_number=day_number
-                           ))
-    if set_cookie_in_response:
-        # Set persistent cookie on final render if needed
-        response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
-        print(f"[DEBUG] index: Setting cookie on final render for {player_uuid_str}") # DEBUG Cookie Set Final Render
+                           show_stats_modal=show_stats_modal,
+                           player_stats=player_stats_dict,
+                           streak_test_mode=streak_test_mode,
+                           effective_date_str=effective_date.strftime('%Y-%m-%d'),
+                           # --- ADDED Variables for Template ---
+                           max_guesses=MAX_GUESSES,
+                           incorrect_guesses=incorrect_guesses,
+                           guessed_letters=guessed_letters,
+                           alphabet=ALPHABET,
+                           # Pass the calculated day number for the share button
+                           day_number=target_day_number,
+                           # Pass stats directly for the stats card (avg_incorrect needs calculation)
+                           stats=player_stats_dict,
+                           avg_incorrect=(player_stats_dict['total_incorrect'] / player_stats_dict['total_games']) if player_stats_dict['total_games'] > 0 else 0
+                           )
 
-    session.permanent = True # <<< ADD THIS LINE
-    return response
+# ... (rest of your routes: guess, share_image, etc.) ...
 
-@main.route('/api/make-guess', methods=['POST'])
+# --- ADD API Endpoint for Emoji ---
+@main.route('/api/get-emoji/<int:riddle_id>')
+def get_emoji(riddle_id):
+    riddle = Riddle.query.get(riddle_id)
+    if riddle:
+        return jsonify({'emoji': riddle.emoji})
+    else:
+        return jsonify({'error': 'Riddle not found'}), 404
+
+# --- ADD make_guess route if it's missing or incomplete ---
+@main.route('/guess', methods=['POST'])
 def make_guess():
-    try: # <<< Add outer try block
-        # --- 1. Get Player UUID ---
-        player_uuid_str = request.cookies.get(PLAYER_COOKIE_NAME)
-        if not player_uuid_str:
-            return jsonify({'error': 'Player identifier missing. Please refresh.', 'success': False}), 400
+    # --- Get Player and Riddle ---
+    player_uuid = session.get('player_uuid')
+    if not player_uuid:
+        return jsonify({'success': False, 'error': 'Player session not found.'}), 400
 
-        # --- 2. Get Guess from Request Body ---
-        data = request.get_json()
-        if not data or 'guess' not in data:
-            return jsonify({'error': 'Missing guess data.', 'success': False}), 400
+    riddle_id = session.get('riddle_id')
+    riddle_answer = session.get('riddle_answer')
+    if not riddle_id or riddle_answer is None:
+        return jsonify({'success': False, 'error': 'Current riddle not found in session.'}), 400
 
-        guessed_letter = data['guess'].lower()
+    # --- Get Guess ---
+    guess_data = request.get_json()
+    if not guess_data or 'guess' not in guess_data:
+        return jsonify({'success': False, 'error': 'Invalid guess data.'}), 400
 
-        # --- 3. Basic Validation ---
-        if not (guessed_letter and len(guessed_letter) == 1 and guessed_letter.isalpha()):
-            return jsonify({'error': 'Invalid guess.', 'success': False}), 400
+    guess = guess_data['guess'].lower()
+    if not guess.isalpha() or len(guess) != 1:
+        return jsonify({'success': False, 'error': 'Invalid guess character.'}), 400
 
-        # --- 4. Load Current Game State from Session ---
-        session_riddle_id = session.get('riddle_id')
-        riddle_answer = session.get('riddle_answer', "")
-        guessed_letters_set = set(session.get('guessed_letters', []))
-        incorrect_guesses = session.get('incorrect_guesses', 0)
+    # --- Load Game State ---
+    guesses = session.get('guesses', [])
+    game_over = session.get('game_over', False)
 
-        if not session_riddle_id or not riddle_answer:
-             return jsonify({'error': 'Game state not found in session. Please refresh.', 'success': False}), 400
+    if game_over:
+        return jsonify({'success': False, 'error': 'Game is already over.'}), 400
 
-        # --- 5. Check if Game Already Over or Letter Already Guessed ---
-        answer_chars = {char for char in riddle_answer if char.isalpha()}
-        was_game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or answer_chars.issubset(guessed_letters_set)
+    if guess in [g.lower() for g in guesses]:
+        return jsonify({'success': False, 'error': 'Letter already guessed.'}), 400
 
-        if was_game_over:
-            return jsonify({'error': 'Game is already over.', 'success': False}), 400
-        if guessed_letter in guessed_letters_set:
-            return jsonify({'error': 'Letter already guessed.', 'success': False}), 400
+    # --- Process Guess ---
+    guesses.append(guess.upper()) # Store guess (e.g., uppercase)
+    session['guesses'] = guesses
 
-        # --- 6. Process the Guess ---
-        session['guessed_letters'] = session.get('guessed_letters', []) + [guessed_letter]
-        guessed_letters_set.add(guessed_letter)
+    guessed_letters = set(g.lower() for g in guesses)
+    incorrect_guesses = len([g for g in guesses if g.lower() not in riddle_answer.lower()])
+    is_correct_guess = guess in riddle_answer.lower()
 
-        is_correct_guess = guessed_letter in riddle_answer
-        if not is_correct_guess:
-            session['incorrect_guesses'] += 1
-            incorrect_guesses += 1
+    # Check for win condition
+    answer_letters = set(c for c in riddle_answer.lower() if c.isalpha())
+    is_win = answer_letters.issubset(guessed_letters)
 
-        session.modified = True
+    # Check for game over condition
+    if is_win or incorrect_guesses >= MAX_GUESSES:
+        game_over = True
+        session['game_over'] = True
+        session['is_win'] = is_win
 
-        # --- 7. Check for Win/Loss *after* guess ---
-        is_win = answer_chars.issubset(guessed_letters_set)
-        is_loss = incorrect_guesses >= MAX_INCORRECT_GUESSES
-        is_game_now_over = is_win or is_loss
+        # --- Update Player Stats ---
+        player_stats = PlayerStats.query.get(player_uuid)
+        if player_stats:
+            now_utc = datetime.now(timezone.utc)
+            today_date = now_utc.date()
+            last_played_date = player_stats.last_played_datetime.date() if player_stats.last_played_datetime else None
 
-        stats_updated_data = None
+            # Update total games
+            player_stats.total_games += 1
+            player_stats.total_incorrect += incorrect_guesses # Add incorrect guesses for this game
 
-        # --- 8. Update Stats in DB if Game Just Ended ---
-        if is_game_now_over:
-            now_utc = datetime.now(timezone.utc) # Use UTC now
-            today_utc = now_utc.date()           # Use UTC today
+            # Update play streak
+            if last_played_date == today_date - timedelta(days=1):
+                player_stats.current_play_streak += 1
+            elif last_played_date != today_date: # Reset if not played yesterday or today
+                player_stats.current_play_streak = 1 # Start new streak
+            # If last_played_date == today_date, streak doesn't change
 
-            current_test_offset = session.get('test_offset', 0)
-            streak_test_mode = session.get('streak_test_mode_flag', False)
-            # Determine effective date based on test mode or UTC
-            effective_date = EPOCH_DATE + timedelta(days=current_test_offset) if current_test_offset else today_utc
+            if player_stats.current_play_streak > player_stats.longest_play_streak:
+                player_stats.longest_play_streak = player_stats.current_play_streak
 
-            player_stats_record = PlayerStats.query.get(player_uuid_str)
-            new_record_created = False
-            if not player_stats_record:
-                player_stats_record = PlayerStats(player_uuid=player_uuid_str)
-                db.session.add(player_stats_record)
-                new_record_created = True
-                print(f"[DEBUG] make_guess: Preparing new PlayerStats record in DB for {player_uuid_str}")
-
-            # Ensure record exists before accessing attributes
-            if player_stats_record:
-                stats = {
-                    'total_games': player_stats_record.total_games or 0, # Use default if None
-                    'total_incorrect': player_stats_record.total_incorrect or 0,
-                    'current_play_streak': player_stats_record.current_play_streak or 0,
-                    'longest_play_streak': player_stats_record.longest_play_streak or 0,
-                    'current_correct_streak': player_stats_record.current_correct_streak or 0,
-                    'longest_correct_streak': player_stats_record.longest_correct_streak or 0,
-                    'last_played_datetime': player_stats_record.last_played_datetime
-                }
-                last_played_datetime = stats['last_played_datetime']
-
-                # --- Update stats dictionary ---
-                stats['total_games'] += 1
-                stats['total_incorrect'] += incorrect_guesses
-                # ... (rest of streak logic remains the same) ...
-                played_yesterday = False
-                is_new_play_period = True
-                if last_played_datetime:
-                    # ... (streak date comparison logic) ...
-                    if streak_test_mode:
-                        time_delta = now_utc - last_played_datetime
-                        one_minute_ago = now_utc - timedelta(minutes(1))
-                        two_minutes_ago = now_utc - timedelta(minutes(2))
-                        if last_played_datetime >= one_minute_ago:
-                             is_new_play_period = False
-                        elif last_played_datetime >= two_minutes_ago:
-                             played_yesterday = True
-                    else:
-                        yesterday_date = effective_date - timedelta(days=1)
-                        if last_played_datetime.date() == effective_date:
-                            is_new_play_period = False
-                        elif last_played_datetime.date() == yesterday_date:
-                            played_yesterday = True
-
-                if is_new_play_period:
-                    if played_yesterday:
-                        stats['current_play_streak'] += 1
-                        stats['current_correct_streak'] = stats['current_correct_streak'] + 1 if is_win else 0
-                    else:
-                        stats['current_play_streak'] = 1
-                        stats['current_correct_streak'] = 1 if is_win else 0
-
-                stats['longest_play_streak'] = max(stats['longest_play_streak'], stats['current_play_streak'])
-                stats['longest_correct_streak'] = max(stats['longest_correct_streak'], stats['current_correct_streak'])
-                stats['last_played_datetime'] = now_utc
-                # --- End stats dictionary update ---
-
-                # --- Update the DB Record ---
-                player_stats_record.total_games = stats['total_games']
-                player_stats_record.total_incorrect = stats['total_incorrect']
-                player_stats_record.current_play_streak = stats['current_play_streak']
-                player_stats_record.longest_play_streak = stats['longest_play_streak']
-                player_stats_record.current_correct_streak = stats['current_correct_streak']
-                player_stats_record.longest_correct_streak = stats['longest_correct_streak']
-                player_stats_record.last_played_datetime = stats['last_played_datetime']
-                print(f"[DEBUG] make_guess: Updating DB record attributes for {player_uuid_str}")
-
-                try:
-                    db.session.commit()
-                    print(f"[DEBUG] make_guess: Committed DB changes for {player_uuid_str}")
-                    stats_updated_data = {
-                        'total_games': stats['total_games'],
-                        'avg_incorrect': (stats['total_incorrect'] / stats['total_games']) if stats['total_games'] > 0 else 0,
-                        'current_play_streak': stats['current_play_streak'],
-                        'longest_play_streak': stats['longest_play_streak'],
-                        'current_correct_streak': stats['current_correct_streak'],
-                        'longest_correct_streak': stats['longest_correct_streak'],
-                        'last_played_datetime_str': stats['last_played_datetime'].strftime('%Y-%m-%d %H:%M:%S UTC')
-                    }
-                except Exception as e_commit:
-                    db.session.rollback()
-                    print(f"[ERROR] make_guess: Failed to commit DB changes for {player_uuid_str}: {e_commit}")
-                    # Return specific error about saving stats
-                    return jsonify({'error': 'Game finished, but failed to save stats.', 'success': False, 'game_over': True, 'is_win': is_win}), 500
+            # Update correct guess streak
+            if is_win:
+                player_stats.current_correct_streak += 1
+                if player_stats.current_correct_streak > player_stats.longest_correct_streak:
+                    player_stats.longest_correct_streak = player_stats.current_correct_streak
             else:
-                 # This case should ideally not happen if add worked, but handle it
-                 print(f"[ERROR] make_guess: PlayerStats record was unexpectedly None for {player_uuid_str} even after attempting add.")
-                 return jsonify({'error': 'Internal error processing game end stats.', 'success': False, 'game_over': True, 'is_win': is_win}), 500
+                player_stats.current_correct_streak = 0 # Reset on loss
+
+            player_stats.last_played_datetime = now_utc
+
+            try:
+                db.session.commit()
+                print(f"[DEBUG] guess: Updated stats for player {player_uuid}")
+                # Prepare updated stats for JSON response
+                updated_stats_dict = {
+                    'total_games': player_stats.total_games,
+                    'total_incorrect': player_stats.total_incorrect,
+                    'current_play_streak': player_stats.current_play_streak,
+                    'longest_play_streak': player_stats.longest_play_streak,
+                    'current_correct_streak': player_stats.current_correct_streak,
+                    'longest_correct_streak': player_stats.longest_correct_streak,
+                    'last_played_datetime_str': player_stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S'),
+                    'avg_incorrect': (player_stats.total_incorrect / player_stats.total_games) if player_stats.total_games > 0 else 0
+                }
+            except Exception as e:
+                db.session.rollback()
+                print(f"[ERROR] guess: Failed to update stats for {player_uuid}: {e}")
+                updated_stats_dict = None # Indicate stats update failed
+        else:
+             print(f"[ERROR] guess: Could not find player stats for {player_uuid} to update.")
+             updated_stats_dict = None
 
 
-        # --- 9. Prepare JSON Response (Success Path) ---
-        response_data = {
+        # --- Prepare Response ---
+        return jsonify({
             'success': True,
-            'guessed_letter': guessed_letter,
+            'guessed_letter': guess,
             'is_correct': is_correct_guess,
             'incorrect_guesses': incorrect_guesses,
-            'game_over': is_game_now_over,
-            'is_win': is_win if is_game_now_over else None,
-            'guessed_letters': list(guessed_letters_set),
-            'stats': stats_updated_data
-        }
-        return jsonify(response_data)
+            'game_over': game_over,
+            'is_win': is_win,
+            'stats': updated_stats_dict # Include updated stats if available
+        })
 
-    except Exception as e: # <<< Catch any unexpected error
-        # Log the full error traceback for debugging on the server
-        print(f"[ERROR] make_guess: Unhandled exception: {e}")
-        import traceback
-        traceback.print_exc()
-        # Return a generic JSON error response
-        return jsonify({'error': 'An unexpected server error occurred.', 'success': False}), 500
+    else: # Game not over yet
+        return jsonify({
+            'success': True,
+            'guessed_letter': guess,
+            'is_correct': is_correct_guess,
+            'incorrect_guesses': incorrect_guesses,
+            'game_over': False,
+            'is_win': False
+        })

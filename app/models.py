@@ -80,6 +80,12 @@ initial_emojis = [
     {"emoji": "🌙", "name": "Crescent Moon", "category": "Travel & Places"}, # Sometimes Nature, sometimes Travel
     {"emoji": "⭐", "name": "Star", "category": "Travel & Places"}, # Sometimes Symbols
     {"emoji": "🔥", "name": "Fire", "category": "Animals & Nature"}, # Sometimes Symbols
+    {"emoji": "🎈", "name": "Balloon", "category": "Activities"},
+    {"emoji": "🎁", "name": "Wrapped Gift", "category": "Objects"},
+    {"emoji": "🌊", "name": "Water Wave", "category": "Travel & Places"}, # Or Nature
+    {"emoji": "🌱", "name": "Seedling", "category": "Animals & Nature"},
+    {"emoji": "🌍", "name": "Earth Globe Americas", "category": "Travel & Places"},
+    {"emoji": "⏰", "name": "Alarm Clock", "category": "Objects"},
 ]
 
 def add_initial_riddles():
