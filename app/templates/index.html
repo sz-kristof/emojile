@@ -296,8 +296,8 @@
                     </div>
                     <!-- End Alphabet Tiles -->
 
-                    <!-- Share Button (Initially Hidden) -->
-                    <div class="text-center mt-3" id="share-section" style="display: none;">
+                    <!-- Share Button (Conditionally Hidden) -->
+                    <div class="text-center mt-3" id="share-section" {% if not game_over %}style="display: none;"{% endif %}> {# Show if game_over is true #}
                         <button id="shareButton" class="btn btn-success">Share Score</button>
                         <span id="copy-feedback" class="ms-2" style="display: none; color: green;">Copied!</span>
                     </div>
@@ -359,6 +359,12 @@
     <script>
         // Pass the next midnight time from Flask to JavaScript
         const nextMidnightISO = "{{ next_midnight_iso | default('null') }}"; // Use default filter for safety
+        const isGameOverOnLoad = {{ game_over | tojson }}; // Pass boolean game_over status
+        const isWinOnLoad = {{ is_win | tojson }};         // Pass boolean is_win status
+        const dayNumberOnLoad = {{ day_number | default(0) }};
+        const incorrectGuessesOnLoad = {{ incorrect_guesses | default(0) }};
+        const maxGuessesOnLoad = {{ max_guesses | default(6) }};
+
 
         document.addEventListener('DOMContentLoaded', () => {
             const emojiDisplay = document.querySelector('.emoji-display');
@@ -367,6 +373,23 @@
             const body = document.body;
             const timerDisplayElement = document.getElementById('timerDisplay');
             const countdownContainer = document.getElementById('countdownTimer');
+            const shareSection = document.getElementById('share-section'); // Declare shareSection only once
+            const shareButton = document.getElementById('shareButton');
+            const copyFeedback = document.getElementById('copy-feedback');
+            const shareStatsButton = document.getElementById('shareStatsButton');
+            const copyStatsFeedback = document.getElementById('copyStatsFeedback');
+
+            // --- NEW: Set Share Button Data on Load if Game Over ---
+            if (isGameOverOnLoad && shareButton) {
+                 console.log("Setting share button data on page load."); // Debug log
+                 shareButton.dataset.dayNumber = dayNumberOnLoad;
+                 // Calculate attempts based on loaded state
+                 const attemptsOnLoad = incorrectGuessesOnLoad + (isWinOnLoad ? 1 : 0);
+                 shareButton.dataset.attempts = attemptsOnLoad;
+                 shareButton.dataset.maxGuesses = maxGuessesOnLoad;
+                 shareButton.dataset.isWin = isWinOnLoad;
+            }
+            // --- END NEW ---
 
             // --- Countdown Timer Logic ---
             let timerInterval = null;
@@ -479,13 +502,6 @@
             const statsCard = document.getElementById('stats-card');
             const statsBody = document.getElementById('stats-body');
             const flashContainer = document.querySelector('.container'); // Target container to add flash messages
-            const shareSection = document.getElementById('share-section'); // <<< ADD
-            const shareButton = document.getElementById('shareButton');     // <<< ADD
-            const copyFeedback = document.getElementById('copy-feedback'); // <<< ADD
-            // --- ADD THESE ---
-            const shareStatsButton = document.getElementById('shareStatsButton');
-            const copyStatsFeedback = document.getElementById('copyStatsFeedback');
-            // --- END ADD ---
 
             // Use event delegation
             if (alphabetContainer) {
@@ -586,7 +602,7 @@
                         }
 
                         // --- Make Share Button Visible ---
-                        if (shareSection) {
+                        if (shareSection) { 
                             shareSection.style.display = 'block';
                             // Store necessary data on the button for the share function
                             shareButton.dataset.dayNumber = "{{ day_number }}";
