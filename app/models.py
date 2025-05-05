@@ -9,9 +9,11 @@ class Riddle(db.Model):
     emoji = db.Column(db.String(10), unique=True, nullable=False) # Store the single emoji character
     name = db.Column(db.String(100), nullable=False) # Official Unicode name
     category = db.Column(db.String(50), nullable=False) # e.g., "Smileys & People"
+    # Add a day_number column, indexed for faster lookups
+    day_number = db.Column(db.Integer, unique=True, nullable=True, index=True)
 
     def __repr__(self):
-        return f'<Riddle {self.emoji} - {self.name}>'
+        return f'<Riddle {self.emoji} - {self.name} (Day {self.day_number})>'
 
 # --- NEW PlayerStats Model ---
 class PlayerStats(db.Model):
@@ -81,23 +83,41 @@ initial_emojis = [
 ]
 
 def add_initial_riddles():
-    """Adds initial emojis to the database if they don't exist."""
+    """Adds initial emojis and assigns sequential day_numbers if missing."""
+    from sqlalchemy import func # Import func for max()
+
+    # Find the maximum assigned day_number in the database
+    max_day_num_result = db.session.query(func.max(Riddle.day_number)).scalar()
+    next_day_num = (max_day_num_result + 1) if max_day_num_result is not None else 0
+    print(f"Starting next day number assignment from: {next_day_num}")
+
     added_count = 0
     for emoji_data in initial_emojis:
-        # Check if an emoji with this character already exists
         exists = Riddle.query.filter_by(emoji=emoji_data["emoji"]).first()
         if not exists:
             new_riddle = Riddle(
                 emoji=emoji_data["emoji"],
                 name=emoji_data["name"],
-                category=emoji_data["category"]
+                category=emoji_data["category"],
+                day_number=next_day_num # Assign the next available day number
             )
             db.session.add(new_riddle)
+            print(f"  Adding '{emoji_data['name']}' with day_number {next_day_num}")
+            next_day_num += 1 # Increment for the next new emoji
             added_count += 1
+        # Optional: Assign day_number to existing riddles if they lack one
+        # This is better handled by a one-time migration script (see Step 2c)
+        # elif exists and exists.day_number is None:
+        #     # Handle assigning day_number to existing ones if needed, carefully
+        #     pass
 
     if added_count > 0:
-        db.session.commit()
-        print(f"Added {added_count} new initial emojis.")
+        try:
+            db.session.commit()
+            print(f"Added {added_count} new initial emojis with day numbers.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error adding new emojis: {e}")
     else:
         print("No new initial emojis to add (or all already exist).")
 

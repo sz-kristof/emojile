@@ -17,20 +17,25 @@ PLAYER_COOKIE_NAME = 'player_uuid'
 # --- get_daily_riddle_id function ---
 def get_daily_riddle_id(date_to_use=None):
     if date_to_use is None: date_to_use = date.today()
-    days_since_epoch = (date_to_use - EPOCH_DATE).days
-    # DEBUG: Print date and days
-    print(f"[DEBUG] get_daily_riddle_id: Date = {date_to_use}, Days since epoch = {days_since_epoch}")
-    all_riddle_ids = [r.id for r in Riddle.query.order_by(Riddle.id).all()]
-    # DEBUG: Print IDs found
-    print(f"[DEBUG] get_daily_riddle_id: Found IDs = {all_riddle_ids}")
-    if not all_riddle_ids:
-        print("[DEBUG] get_daily_riddle_id: No IDs found, returning None")
+    target_day_number = (date_to_use - EPOCH_DATE).days # Day number starts from 0
+    print(f"[DEBUG] get_daily_riddle_id: Target Day Number = {target_day_number}")
+    riddle = Riddle.query.filter_by(day_number=target_day_number).first()
+    if riddle:
+        print(f"[DEBUG] get_daily_riddle_id: Found Riddle ID = {riddle.id} for day {target_day_number}")
+        return riddle.id
+    else:
+        # Handle case where no riddle is assigned to this day yet
+        # Option 1: Return None (as it does now)
+        # Option 2: Wrap around using modulo on the *count* of riddles with assigned day_numbers
+        total_assigned_riddles = Riddle.query.filter(Riddle.day_number.isnot(None)).count()
+        if total_assigned_riddles > 0:
+            wrapped_day_number = target_day_number % total_assigned_riddles
+            riddle_wrapped = Riddle.query.filter_by(day_number=wrapped_day_number).first()
+            if riddle_wrapped:
+                 print(f"[DEBUG] get_daily_riddle_id: No riddle for day {target_day_number}, wrapped to day {wrapped_day_number}, ID = {riddle_wrapped.id}")
+                 return riddle_wrapped.id
+        print(f"[DEBUG] get_daily_riddle_id: No riddle found for day {target_day_number} (or wrapped).")
         return None
-    riddle_index = days_since_epoch % len(all_riddle_ids)
-    selected_id = all_riddle_ids[riddle_index]
-    # DEBUG: Print selected ID
-    print(f"[DEBUG] get_daily_riddle_id: Index = {riddle_index}, Selected ID = {selected_id}")
-    return selected_id
 
 # --- NEW API Endpoint ---
 @main.route('/api/get-emoji/<int:riddle_id>')
@@ -145,7 +150,7 @@ def index():
                      stats_updated_this_request = True
 
     # --- Determine Today's Riddle ID & Details ---
-    total_riddles = Riddle.query.count()
+    total_riddles = Riddle.query.count() # Keep this check maybe
     today_riddle_id = None
     current_riddle_obj = None
     riddle_answer = ""
@@ -155,32 +160,37 @@ def index():
         print("[DEBUG] index: No riddles found in DB.")
         flash("No riddles available in the database.", "warning")
     else:
-        # --- USE THE SAME LOGIC AS get_daily_riddle_id ---
-        days_since_epoch = (effective_date - EPOCH_DATE).days
-        # Fetch ordered IDs directly from the database query
-        all_riddle_ids_query = db.session.query(Riddle.id).order_by(Riddle.id).all()
-        all_riddle_ids = [r_id for r_id, in all_riddle_ids_query] # Unpack tuples
+        # --- NEW SELECTION LOGIC using day_number ---
+        target_day_number = (effective_date - EPOCH_DATE).days # Day number starts from 0
+        print(f"[DEBUG] index: Target Day Number = {target_day_number}")
+        current_riddle_obj = Riddle.query.filter_by(day_number=target_day_number).first()
 
-        if not all_riddle_ids: # Should not happen if total_riddles > 0, but safe check
-             print("[ERROR] index: No riddle IDs found despite count > 0.")
-             flash("Error loading today's riddle.", "danger")
+        if current_riddle_obj:
+            today_riddle_id = current_riddle_obj.id
+            riddle_answer = current_riddle_obj.name.lower()
+            category = current_riddle_obj.category
+            print(f"[DEBUG] index: Found riddle ID {today_riddle_id} ('{riddle_answer}') for day {target_day_number}")
         else:
-            riddle_index = days_since_epoch % len(all_riddle_ids)
-            today_riddle_id = all_riddle_ids[riddle_index] # Get the actual ID from the list
-            print(f"[DEBUG] index: Calculated today_riddle_id = {today_riddle_id} (using list lookup)")
-            # --- END USE THE SAME LOGIC ---
-
-            # Fetch the full riddle object directly using the confirmed ID
-            current_riddle_obj = Riddle.query.get(today_riddle_id) # This should now find the riddle
-            if current_riddle_obj:
-                riddle_answer = current_riddle_obj.name.lower()
-                category = current_riddle_obj.category
-                print(f"[DEBUG] index: Found riddle '{riddle_answer}' with category '{category}'")
+            # Handle case where no riddle is assigned for today yet
+            # Option 1: Show error/message
+            # flash(f"No riddle assigned for today (Day {target_day_number}). Check back later.", "info")
+            # Option 2: Wrap around (use modulo on count of assigned riddles)
+            total_assigned_riddles = Riddle.query.filter(Riddle.day_number.isnot(None)).count()
+            if total_assigned_riddles > 0:
+                wrapped_day_number = target_day_number % total_assigned_riddles
+                current_riddle_obj = Riddle.query.filter_by(day_number=wrapped_day_number).first()
+                if current_riddle_obj:
+                    today_riddle_id = current_riddle_obj.id
+                    riddle_answer = current_riddle_obj.name.lower()
+                    category = current_riddle_obj.category
+                    print(f"[DEBUG] index: No riddle for day {target_day_number}, wrapped to day {wrapped_day_number}, ID = {today_riddle_id}")
+                else:
+                     print(f"[ERROR] index: No riddle found for day {target_day_number} or wrapped day {wrapped_day_number}.")
+                     flash("Error loading today's riddle.", "danger")
             else:
-                # This case is less likely now, but handle it just in case
-                print(f"[ERROR] index: Riddle object not found for ID {today_riddle_id} obtained from list.")
-                flash("Error loading today's riddle details.", "danger")
-                today_riddle_id = None # Ensure ID is None if riddle not found
+                 print(f"[ERROR] index: No riddles with assigned day numbers found.")
+                 flash("No riddles available.", "warning")
+
 
     # --- Check if Game State needs reset ---
     session_riddle_id = session.get('riddle_id')
@@ -438,8 +448,8 @@ def make_guess():
                     # ... (streak date comparison logic) ...
                     if streak_test_mode:
                         time_delta = now_utc - last_played_datetime
-                        one_minute_ago = now_utc - timedelta(minutes=1)
-                        two_minutes_ago = now_utc - timedelta(minutes=2)
+                        one_minute_ago = now_utc - timedelta(minutes(1))
+                        two_minutes_ago = now_utc - timedelta(minutes(2))
                         if last_played_datetime >= one_minute_ago:
                              is_new_play_period = False
                         elif last_played_datetime >= two_minutes_ago:
