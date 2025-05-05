@@ -32,6 +32,7 @@ class PlayerStats(db.Model):
 # Sample list of emojis with names and categories
 # (You'll want a much larger list from a reliable source like Unicode CLDR or a library)
 initial_emojis = [
+    # Original 15
     {"emoji": "😀", "name": "Grinning Face", "category": "Smileys & People"},
     {"emoji": "😂", "name": "Face with Tears of Joy", "category": "Smileys & People"},
     {"emoji": "❤️", "name": "Red Heart", "category": "Symbols"},
@@ -47,6 +48,36 @@ initial_emojis = [
     {"emoji": "💻", "name": "Laptop", "category": "Objects"},
     {"emoji": "📚", "name": "Books", "category": "Objects"},
     {"emoji": "💡", "name": "Light Bulb", "category": "Objects"},
+    {"emoji": "😊", "name": "Smiling Face with Smiling Eyes", "category": "Smileys & People"},
+    {"emoji": "😍", "name": "Smiling Face with Heart Eyes", "category": "Smileys & People"},
+    {"emoji": "🥳", "name": "Partying Face", "category": "Smileys & People"},
+    {"emoji": "🥺", "name": "Pleading Face", "category": "Smileys & People"},
+    {"emoji": "😭", "name": "Loudly Crying Face", "category": "Smileys & People"},
+    {"emoji": "🥶", "name": "Cold Face", "category": "Smileys & People"},
+    {"emoji": "🤯", "name": "Exploding Head", "category": "Smileys & People"},
+    {"emoji": "🤖", "name": "Robot", "category": "Smileys & People"},
+    {"emoji": "👻", "name": "Ghost", "category": "Smileys & People"},
+    {"emoji": "👽", "name": "Alien", "category": "Smileys & People"},
+    {"emoji": "👋", "name": "Waving Hand", "category": "People & Body"},
+    {"emoji": "🙏", "name": "Folded Hands", "category": "People & Body"},
+    {"emoji": "👀", "name": "Eyes", "category": "People & Body"},
+    {"emoji": "🧠", "name": "Brain", "category": "People & Body"},
+    {"emoji": "👑", "name": "Crown", "category": "Objects"},
+    {"emoji": "💍", "name": "Ring", "category": "Objects"},
+    {"emoji": "💎", "name": "Gem Stone", "category": "Objects"},
+    {"emoji": "💰", "name": "Money Bag", "category": "Objects"},
+    {"emoji": "🍔", "name": "Hamburger", "category": "Food & Drink"},
+    {"emoji": "🍟", "name": "French Fries", "category": "Food & Drink"},
+    {"emoji": "🍦", "name": "Soft Ice Cream", "category": "Food & Drink"},
+    {"emoji": "🍓", "name": "Strawberry", "category": "Food & Drink"},
+    {"emoji": "🥑", "name": "Avocado", "category": "Food & Drink"},
+    {"emoji": "🚗", "name": "Automobile", "category": "Travel & Places"},
+    {"emoji": "✈️", "name": "Airplane", "category": "Travel & Places"},
+    {"emoji": "🏝️", "name": "Desert Island", "category": "Travel & Places"},
+    {"emoji": "☀️", "name": "Sun", "category": "Animals & Nature"},
+    {"emoji": "🌙", "name": "Crescent Moon", "category": "Travel & Places"}, # Sometimes Nature, sometimes Travel
+    {"emoji": "⭐", "name": "Star", "category": "Travel & Places"}, # Sometimes Symbols
+    {"emoji": "🔥", "name": "Fire", "category": "Animals & Nature"}, # Sometimes Symbols
 ]
 
 def add_initial_riddles():
