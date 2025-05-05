@@ -144,29 +144,43 @@ def index():
                      stats['current_correct_streak'] = 0
                      stats_updated_this_request = True
 
-    # --- Determine Today's Riddle ID ---
+    # --- Determine Today's Riddle ID & Details ---
     total_riddles = Riddle.query.count()
+    today_riddle_id = None
+    current_riddle_obj = None
+    riddle_answer = ""
+    category = ""
+
     if total_riddles == 0:
-        today_riddle_id = None
-        riddle_answer = ""
-        category = "N/A"
-        print("[DEBUG] index: No riddles found in DB.") # DEBUG No Riddles
+        print("[DEBUG] index: No riddles found in DB.")
+        flash("No riddles available in the database.", "warning")
     else:
-        day_number_for_id = (effective_date - EPOCH_DATE).days
-        today_riddle_id = (day_number_for_id % total_riddles) + 1
-        # Fetch the actual riddle object using SQLAlchemy query
-        # Replace the incorrect function call:
-        # current_riddle_obj = get_riddle_by_id(today_riddle_id) # Use helper
-        current_riddle_obj = Riddle.query.get(today_riddle_id) # <<< FIX HERE
-        if current_riddle_obj:
-            riddle_answer = current_riddle_obj.name.lower() # Store the correct answer for logic
-            category = current_riddle_obj.category
+        # --- USE THE SAME LOGIC AS get_daily_riddle_id ---
+        days_since_epoch = (effective_date - EPOCH_DATE).days
+        # Fetch ordered IDs directly from the database query
+        all_riddle_ids_query = db.session.query(Riddle.id).order_by(Riddle.id).all()
+        all_riddle_ids = [r_id for r_id, in all_riddle_ids_query] # Unpack tuples
+
+        if not all_riddle_ids: # Should not happen if total_riddles > 0, but safe check
+             print("[ERROR] index: No riddle IDs found despite count > 0.")
+             flash("Error loading today's riddle.", "danger")
         else:
-            # Handle case where ID is calculated but riddle doesn't exist (shouldn't happen)
-            today_riddle_id = None
-            riddle_answer = ""
-            category = "Error"
-            print(f"[ERROR] index: Riddle object not found for calculated ID {today_riddle_id}") # ERROR Riddle Object Not Found
+            riddle_index = days_since_epoch % len(all_riddle_ids)
+            today_riddle_id = all_riddle_ids[riddle_index] # Get the actual ID from the list
+            print(f"[DEBUG] index: Calculated today_riddle_id = {today_riddle_id} (using list lookup)")
+            # --- END USE THE SAME LOGIC ---
+
+            # Fetch the full riddle object directly using the confirmed ID
+            current_riddle_obj = Riddle.query.get(today_riddle_id) # This should now find the riddle
+            if current_riddle_obj:
+                riddle_answer = current_riddle_obj.name.lower()
+                category = current_riddle_obj.category
+                print(f"[DEBUG] index: Found riddle '{riddle_answer}' with category '{category}'")
+            else:
+                # This case is less likely now, but handle it just in case
+                print(f"[ERROR] index: Riddle object not found for ID {today_riddle_id} obtained from list.")
+                flash("Error loading today's riddle details.", "danger")
+                today_riddle_id = None # Ensure ID is None if riddle not found
 
     # --- Check if Game State needs reset ---
     session_riddle_id = session.get('riddle_id')
@@ -288,14 +302,20 @@ def index():
 
 
     # --- Prepare Data for Final Template Render ---
-    # ... (calculate game_over, avg_incorrect) ...
+    # ... (calculate avg_incorrect) ...
     game_over = incorrect_guesses >= MAX_INCORRECT_GUESSES or \
                 (riddle_answer and {char for char in riddle_answer if char.isalpha()}.issubset(guessed_letters_set))
+    # Calculate is_win status based on loaded state if game is over
     avg_incorrect = (stats['total_incorrect'] / stats['total_games']) if stats['total_games'] > 0 else 0
+    # --- DEFINE answer_chars HERE ---
+    answer_chars = {char for char in riddle_answer if char.isalpha()} if riddle_answer else set()
+    # --- Use answer_chars ---
+    is_win = game_over and answer_chars.issubset(guessed_letters_set) if riddle_answer else False
+
     alphabet = string.ascii_uppercase
 
     # DEBUG: Print final values being passed to template
-    print(f"[DEBUG] index: Rendering template with riddle_id={today_riddle_id}, category='{category}', answer_display='{riddle_answer}', next_midnight_iso='{next_midnight_iso}'")
+    print(f"[DEBUG] index: Rendering template with riddle_id={today_riddle_id}, category='{category}', answer_display='{riddle_answer}', next_midnight_iso='{next_midnight_iso}', game_over={game_over}, is_win={is_win}") # Added game_over/is_win
 
     # --- Prepare Final Response ---
     response = make_response(render_template('index.html',
@@ -307,11 +327,12 @@ def index():
                            incorrect_guesses=incorrect_guesses,
                            max_guesses=MAX_INCORRECT_GUESSES,
                            game_over=game_over,
+                           is_win=is_win, # Pass is_win
                            stats=stats, # Pass the loaded/updated stats dict
-                           avg_incorrect=avg_incorrect,
+                           avg_incorrect=avg_incorrect, # Keep avg_incorrect
                            streak_test_mode=streak_test_mode,
                            next_midnight_iso=next_midnight_iso,
-                           day_number=day_number # <<< ADD THIS
+                           day_number=day_number
                            ))
     if set_cookie_in_response:
         # Set persistent cookie on final render if needed
