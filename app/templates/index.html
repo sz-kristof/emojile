@@ -240,12 +240,12 @@
             {% endif %}
         {% endwith %}
 
-        {% if riddle_id is not none %} {# Check if we have a riddle ID #}
+        {% if current_riddle_id is not none %} {# Check if we have a riddle ID #}
             <div class="card">
                 <div class="card-body">
                     <!-- Emoji Display (Initially Empty) -->
                     <!-- Add data-riddle-id attribute -->
-                    <div class="emoji-display" data-riddle-id="{{ riddle_id }}">&nbsp;</div>
+                    <div class="emoji-display" data-riddle-id="{{ current_riddle_id }}">&nbsp;</div>
                     <!-- Display Category -->
                     <div class="category-display">
                         Category: {{ category }}
@@ -459,26 +459,47 @@
 
 
             // --- Emoji Fetch Logic ---
+            // Add logging here to see if these elements are found correctly
+            console.log("Attempting to find emoji display element:", emojiDisplay);
+            console.log("Attempting to find riddle ID:", riddleId);
+
             if (emojiDisplay && riddleId) {
+                // Add logging INSIDE the 'if' to confirm it's entered
+                console.log(`Condition met: Found emojiDisplay and riddleId (${riddleId}). Preparing to fetch.`);
                 fetch(`/api/get-emoji/${riddleId}`)
                     .then(response => {
+                        // Add logging for the response status
+                        console.log(`Fetch response status: ${response.status}`);
                         if (!response.ok) {
+                            // Log the response text on error
+                            response.text().then(text => console.error(`HTTP error response body: ${text}`));
                             throw new Error(`HTTP error! status: ${response.status}`);
                         }
                         return response.json();
                     })
                     .then(data => {
+                        // Log the received data
+                        console.log("Received data from /api/get-emoji:", data);
                         if (data.emoji) {
                             emojiDisplay.textContent = data.emoji;
+                            console.log(`Successfully set emoji display to: ${data.emoji}`);
                         } else {
-                            console.error("Failed to load emoji:", data.error || "Unknown error");
+                            console.error("Emoji not found in API response data:", data);
                             emojiDisplay.textContent = '?';
                         }
                     })
                     .catch(error => {
-                        console.error('Error fetching emoji:', error);
+                        console.error('Error during fetch operation:', error);
                         emojiDisplay.textContent = '?';
                     });
+            } else {
+                 // These logs help if the 'if' condition fails
+                 if (!riddleId) {
+                    console.log("Condition failed: No riddleId found.");
+                 }
+                 if (!emojiDisplay) {
+                    console.error("Condition failed: Could not find element with class='emoji-display'.");
+                 }
             }
             // --- End Emoji Fetch Logic ---
 
