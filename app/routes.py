@@ -206,6 +206,7 @@ def index():
             # Set persistent cookie on redirect
             response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
             print(f"[DEBUG] index: Setting cookie on redirect for {player_uuid_str}") # DEBUG Cookie Set Redirect
+        session.permanent = True # <<< ADD THIS LINE
         return response
 
     # --- Flash Test Mode Messages ---
@@ -253,6 +254,7 @@ def index():
          if set_cookie_in_response:
              response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
              print(f"[DEBUG] index: Setting cookie on empty state render for {player_uuid_str}") # DEBUG Cookie Set Empty
+         session.permanent = True # <<< ADD THIS LINE
          return response
 
 
@@ -316,6 +318,7 @@ def index():
         response.set_cookie(PLAYER_COOKIE_NAME, player_uuid_str, max_age=timedelta(days=365*5), httponly=True, samesite='Lax')
         print(f"[DEBUG] index: Setting cookie on final render for {player_uuid_str}") # DEBUG Cookie Set Final Render
 
+    session.permanent = True # <<< ADD THIS LINE
     return response
 
 @main.route('/api/make-guess', methods=['POST'])
