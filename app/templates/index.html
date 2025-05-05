@@ -338,7 +338,15 @@
                  {% else %}
                  <small class="text-muted" id="stats-last-played"></small>
                  {% endif %}
-            </div>
+
+                 <!-- Add Share Stats Button -->
+                 <div class="text-center mt-3">
+                     <button id="shareStatsButton" class="btn btn-info btn-sm">Share Overall Stats</button>
+                     <span id="copyStatsFeedback" class="ms-2" style="display: none; color: green;">Copied!</span>
+                 </div>
+                 <!-- End Share Stats Button -->
+
+            </div> {# End stats-body #}
         </div>
         <!-- End Stats Display -->
 
@@ -474,6 +482,10 @@
             const shareSection = document.getElementById('share-section'); // <<< ADD
             const shareButton = document.getElementById('shareButton');     // <<< ADD
             const copyFeedback = document.getElementById('copy-feedback'); // <<< ADD
+            // --- ADD THESE ---
+            const shareStatsButton = document.getElementById('shareStatsButton');
+            const copyStatsFeedback = document.getElementById('copyStatsFeedback');
+            // --- END ADD ---
 
             // Use event delegation
             if (alphabetContainer) {
@@ -632,6 +644,47 @@
             }
             // --- End Share Button Logic ---
 
+            // --- NEW: Share Stats Button Logic ---
+            if (shareStatsButton) {
+                shareStatsButton.addEventListener('click', copyOverallStats);
+            }
+
+            function copyOverallStats() {
+                // Read stats directly from the displayed elements
+                const totalGames = document.getElementById('stats-total-games')?.textContent || 'N/A';
+                const avgIncorrect = document.getElementById('stats-avg-incorrect')?.textContent || 'N/A';
+                const currentPlayStreak = document.getElementById('stats-current-play-streak')?.textContent || 'N/A';
+                const longestPlayStreak = document.getElementById('stats-longest-play-streak')?.textContent || 'N/A';
+                const currentCorrectStreak = document.getElementById('stats-current-correct-streak')?.textContent || 'N/A';
+                const longestCorrectStreak = document.getElementById('stats-longest-correct-streak')?.textContent || 'N/A';
+
+                // Construct the text
+                let statsText = `My Emojile Stats:\n`;
+                statsText += `Total Games: ${totalGames}\n`;
+                statsText += `Avg Incorrect Guesses: ${avgIncorrect}\n`;
+                statsText += `Current Play Streak: ${currentPlayStreak} 🔥\n`;
+                statsText += `Longest Play Streak: ${longestPlayStreak}\n`;
+                statsText += `Current Correct Streak: ${currentCorrectStreak} ✅\n`;
+                statsText += `Longest Correct Streak: ${longestCorrectStreak}\n`;
+                statsText += `\nPlay Emojile! ${window.location.href}`;
+
+                // Use Clipboard API
+                navigator.clipboard.writeText(statsText).then(() => {
+                    // Success feedback
+                    if (copyStatsFeedback) {
+                        copyStatsFeedback.style.display = 'inline'; // Show "Copied!"
+                        shareStatsButton.disabled = true; // Temporarily disable button
+                        setTimeout(() => {
+                            copyStatsFeedback.style.display = 'none'; // Hide after 2 seconds
+                            shareStatsButton.disabled = false; // Re-enable button
+                        }, 2000);
+                    }
+                }).catch(err => {
+                    console.error('Failed to copy stats text: ', err);
+                    addFlashMessage('Failed to copy stats. Please try again.', 'danger');
+                });
+            }
+            // --- End Share Stats Button Logic ---
 
             // Helper function to add flash messages dynamically
             function addFlashMessage(message, category) {
