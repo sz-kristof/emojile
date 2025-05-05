@@ -26,15 +26,21 @@ def create_app(config_class=Config):
     with app.app_context():
         from . import models # Import models
 
-    # Add a command to populate the database
+    # Modify the command to populate the database without dropping stats
     @app.cli.command("init-db")
     def init_db_command():
-        """Clear existing data and create new tables."""
+        """Ensure tables exist and add new initial riddles without dropping existing data."""
         from .models import add_initial_riddles
-        db.drop_all()
+
+        # Create tables if they don't exist (safe for existing data)
+        # This will add new tables or columns based on your models if they are missing.
         db.create_all()
+        print("Ensured all tables exist (created if necessary).")
+
+        # Add only new emojis from the list in models.py
         add_initial_riddles()
-        print("Initialized the database.")
+        # The add_initial_riddles function already checks if emojis exist,
+        # so it won't duplicate them.
 
     # Add current_year to template context
     @app.context_processor
