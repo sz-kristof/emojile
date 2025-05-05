@@ -10,7 +10,7 @@ from datetime import date, timedelta, datetime, time, timezone # Import timezone
 import uuid # Import uuid library
 
 main = Blueprint('main', __name__)
-MAX_INCORRECT_GUESSES = 6
+MAX_INCORRECT_GUESSES = 3
 EPOCH_DATE = date(2024, 1, 1)
 PLAYER_COOKIE_NAME = 'player_uuid'
 
