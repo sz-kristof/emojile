@@ -18,30 +18,28 @@ def create_app(config_class=Config):
         print("Warning: SECRET_KEY not set in config, using a temporary random key.")
 
     db.init_app(app)
-    migrate.init_app(app, db)
+    migrate = Migrate(app, db) # Initialize Migrate here
 
     # Import and register the blueprint
-    from . import routes, models # Import the blueprint and models
-    app.register_blueprint(main) # Register it with the app
+    from .routes import main as main_blueprint
+    app.register_blueprint(main_blueprint)
 
     with app.app_context():
         from . import models # Import models
 
-    # Modify the command to populate the database without dropping stats
-    @app.cli.command("init-db")
-    def init_db_command():
-        """Ensure tables exist and add new initial riddles without dropping existing data."""
-        from .models import add_initial_riddles
+    # Remove or comment out the init-db command defined here
+    # @app.cli.command("init-db")
+    # def init_db_command():
+    #     """Ensure tables exist and add new initial riddles without dropping existing data."""
+    #     # from .models import add_initial_riddles # This line causes the error
 
-        # Create tables if they don't exist (safe for existing data)
-        # This will add new tables or columns based on your models if they are missing.
-        db.create_all()
-        print("Ensured all tables exist (created if necessary).")
+    #     # Create tables if they don't exist (safe for existing data)
+    #     db.create_all()
+    #     print("Ensured all tables exist (created if necessary).")
 
-        # Add only new emojis from the list in models.py
-        add_initial_riddles()
-        # The add_initial_riddles function already checks if emojis exist,
-        # so it won't duplicate them.
+    #     # Add only new emojis from the list in models.py
+    #     # add_initial_riddles() # This function call is problematic
+    #     print("Riddle initialization is now handled by 'flask main init-db' or the init-db in routes.py.")
 
     # Add current_year to template context
     @app.context_processor

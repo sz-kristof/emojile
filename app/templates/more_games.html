@@ -1,0 +1,116 @@
+<!-- filepath: c:\Users\szere\Documents\test\my-flask-project\app\templates\more_games.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>More Games - Emojile</title>
+    <link rel="icon" href="{{ url_for('static', filename='emojiriddlewebicon.png') }}" type="image/png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Add dark mode styles if needed, similar to index.html -->
+    <style>
+        /* You might want to copy dark mode CSS variables here */
+        body.dark-mode { /* Basic example */
+             background-color: #212529;
+             color: #f8f9fa;
+        }
+        .list-group-item {
+             background-color: var(--card-bg, #ffffff); /* Use theme variable */
+             color: var(--text-color, #212529);
+             border-color: var(--card-border, #dee2e6);
+        }
+         body.dark-mode .list-group-item {
+             background-color: #343a40;
+             color: #f8f9fa;
+             border-color: #495057;
+         }
+         body.dark-mode a.list-group-item:hover {
+             background-color: #495057;
+         }
+    </style>
+</head>
+<body>
+    <!-- Sidebar (Include the same sidebar HTML as index.html) -->
+    <div class="sidebar">
+        <a href="#" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
+        <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🧩</span> <span class="sidebar-text">Classic</span></a>
+        <!-- Link to More Games Page (Active state might need styling) -->
+        <a href="{{ url_for('main.more_games') }}" class="sidebar-item">
+            <span>🎮</span>
+            <span class="sidebar-text">More Games</span>
+        </a>
+        <a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Dark Mode Toggle Button -->
+        <button id="darkModeToggle" class="btn btn-secondary btn-sm">🌙</button>
+
+        <div class="container">
+            <h1 class="text-center mb-4">Choose a Game Mode</h1>
+
+            <div class="list-group">
+                {% for mode in available_modes %}
+                    <a href="{{ url_for('main.index', mode=mode) }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <div>
+                            {% if mode == 'Classic' %}
+                                <span>🧩</span>
+                            {% elif mode == 'Pixelated' %}
+                                <span>🖼️</span>
+                            {% else %}
+                                <span>✨</span> {# Default icon #}
+                            {% endif %}
+                            <strong class="ms-2">{{ mode }}</strong>
+                            {% if mode == 'Mashup' %} {# Example: Add 'Soon' badge #}
+                                <span class="badge bg-secondary ms-2">Soon</span>
+                            {% endif %}
+                        </div>
+                        <span class="badge bg-primary rounded-pill">></span> {# Simple arrow indicator #}
+                    </a>
+                {% endfor %}
+                 <a href="#" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center disabled" tabindex="-1" aria-disabled="true">
+                     <div>
+                         <span>✨</span>
+                         <strong class="ms-2">Mashup</strong>
+                         <span class="badge bg-secondary ms-2">Coming Soon</span>
+                     </div>
+                     <span class="badge bg-light text-dark rounded-pill"></span>
+                 </a>
+            </div>
+
+            <footer class="text-center mt-4 text-muted py-3">
+                &copy; {{ current_year }} Emojile
+            </footer>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Add dark mode toggle JS here, similar to index.html
+        document.addEventListener('DOMContentLoaded', () => {
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            const body = document.body;
+
+            const applyTheme = (theme) => {
+                if (theme === 'dark') {
+                    body.classList.add('dark-mode');
+                    darkModeToggle.textContent = '☀️';
+                } else {
+                    body.classList.remove('dark-mode');
+                    darkModeToggle.textContent = '🌙';
+                }
+            };
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            applyTheme(savedTheme);
+            darkModeToggle.addEventListener('click', () => {
+                const currentTheme = body.classList.contains('dark-mode') ? 'dark' : 'light';
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                localStorage.setItem('theme', newTheme);
+                applyTheme(newTheme);
+            });
+        });
+    </script>
+</body>
+</html>

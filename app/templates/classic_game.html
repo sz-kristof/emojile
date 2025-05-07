@@ -252,6 +252,7 @@
             <div class="text-center my-4">
                 <h2 id="category-display" class="text-muted">{{ category }}</h2>
 
+                <!-- REMOVE THIS OLD DISPLAY (if still present) -->
                 <!--
                 {% if emoji_char %}
                 <div class="emoji-display" style="font-size: 5rem; margin-bottom: 20px;">
@@ -260,10 +261,10 @@
                 {% endif %}
                 -->
 
-                <!-- Emoji Display Area (Keep this new one) -->
+                <!-- Emoji Display Area for Classic Mode -->
                 <div id="emoji-container" class="my-3">
-                    <span id="text-emoji-display" style="font-size: 6rem; display: none;"></span>
-                    <canvas id="pixelated-emoji-canvas" style="display: none;"></canvas>
+                    <span id="text-emoji-display" style="font-size: 6rem;"></span>
+                    <!-- The canvas element should NOT be here -->
                 </div>
             </div>
 
@@ -281,9 +282,6 @@
             {% if current_riddle_id is not none %} {# Check if we have a riddle ID #}
                 <div class="card">
                     <div class="card-body">
-                        <!-- Emoji Display (Initially Empty) -->
-                        <!-- Add data-riddle-id attribute -->
-                        <div class="emoji-display" data-riddle-id="{{ current_riddle_id }}">&nbsp;</div>
                         <!-- Display Category -->
                         <div class="category-display">
                             Category: {{ category }}
@@ -409,8 +407,6 @@
         let currentEmojiCharacter = ''; // To store the fetched emoji
 
         document.addEventListener('DOMContentLoaded', () => {
-            const emojiDisplay = document.querySelector('.emoji-display');
-            const riddleId = emojiDisplay ? emojiDisplay.getAttribute('data-riddle-id') : null;
             const darkModeToggle = document.getElementById('darkModeToggle');
             const body = document.body;
             const timerDisplayElement = document.getElementById('timerDisplay');
@@ -500,50 +496,18 @@
             // --- End Dark Mode Logic ---
 
 
-            // --- Emoji Fetch Logic ---
-            // Add logging here to see if these elements are found correctly
-            console.log("Attempting to find emoji display element:", emojiDisplay);
-            console.log("Attempting to find riddle ID:", riddleId);
+            // --- NEW Emoji Fetch and Display Logic for Classic ---
+            const initialRiddleId = {{ current_riddle_id|tojson }};
+            const initialIncorrectGuesses = {{ incorrect_guesses|tojson }};
+            const initialGameMode = {{ selected_mode|tojson }}; // Should be 'Classic'
+            const initialIsGameOver = {{ game_over|tojson }};
 
-            if (emojiDisplay && riddleId) {
-                // Add logging INSIDE the 'if' to confirm it's entered
-                console.log(`Condition met: Found emojiDisplay and riddleId (${riddleId}). Preparing to fetch.`);
-                fetch(`/api/get-emoji/${riddleId}`)
-                    .then(response => {
-                        // Add logging for the response status
-                        console.log(`Fetch response status: ${response.status}`);
-                        if (!response.ok) {
-                            // Log the response text on error
-                            response.text().then(text => console.error(`HTTP error response body: ${text}`));
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        // Log the received data
-                        console.log("Received data from /api/get-emoji:", data);
-                        if (data.emoji) {
-                            emojiDisplay.textContent = data.emoji;
-                            console.log(`Successfully set emoji display to: ${data.emoji}`);
-                        } else {
-                            console.error("Emoji not found in API response data:", data);
-                            emojiDisplay.textContent = '?';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error during fetch operation:', error);
-                        emojiDisplay.textContent = '?';
-                    });
+            if (initialRiddleId) {
+                fetchEmojiAndDisplay(initialRiddleId, initialIncorrectGuesses, initialGameMode, initialIsGameOver);
             } else {
-                 // These logs help if the 'if' condition fails
-                 if (!riddleId) {
-                    console.log("Condition failed: No riddleId found.");
-                 }
-                 if (!emojiDisplay) {
-                    console.error("Condition failed: Could not find element with class='emoji-display'.");
-                 }
+                displayEmoji('', 0, initialGameMode, true);
             }
-            // --- End Emoji Fetch Logic ---
+            // --- End NEW Emoji Fetch ---
 
             // --- Existing Keyboard Listener ---
             document.addEventListener('keydown', (event) => {
@@ -810,18 +774,6 @@
                 }
             }
 
-            const initialRiddleId = {{ current_riddle_id|tojson }};
-            const initialIncorrectGuesses = {{ incorrect_guesses|tojson }};
-            const initialGameMode = {{ selected_mode|tojson }};
-            const initialIsGameOver = {{ game_over|tojson }};
-
-            if (initialRiddleId) {
-                fetchEmojiAndDisplay(initialRiddleId, initialIncorrectGuesses, initialGameMode, initialIsGameOver);
-            } else {
-                // Handle case where there's no riddle (e.g., show a placeholder)
-                displayEmoji('', 0, initialGameMode, true); // Show placeholder, game over state
-            }
-
             // When a guess is made and you get a response, update the display:
             // Inside your handleGuessResponse(data) function:
             // fetchEmojiAndDisplay(
@@ -863,72 +815,26 @@
         }
 
         function displayEmoji(emojiChar, incorrectGuesses, gameMode, isGameOver) {
-            const canvas = document.getElementById('pixelated-emoji-canvas');
+            // gameMode will effectively always be 'Classic' when this template is rendered
             const textEmojiSpan = document.getElementById('text-emoji-display');
             const emojiContainer = document.getElementById('emoji-container');
 
-            if (!canvas || !textEmojiSpan || !emojiContainer) {
-                console.error("Emoji display elements not found!");
+            if (!textEmojiSpan || !emojiContainer) {
+                console.error("Emoji display elements not found for Classic mode!");
                 return;
             }
 
-            // Ensure emojiChar is a string, even if empty
-            const displayChar = emojiChar || '❓'; // Fallback character if emoji is empty
+            const displayChar = emojiChar || '❓'; // Fallback character
 
-            if (gameMode === 'Pixelated') {
-                textEmojiSpan.style.display = 'none';
-                canvas.style.display = 'block'; // Make canvas visible
-                emojiContainer.classList.add('pixelated-mode');
-                emojiContainer.classList.remove('classic-mode');
+            // Ensure only text emoji is visible
+            textEmojiSpan.style.display = 'inline';
+            // if (document.getElementById('pixelated-emoji-canvas')) { // Should not exist here
+            //     document.getElementById('pixelated-emoji-canvas').style.display = 'none';
+            // }
 
-                const ctx = canvas.getContext('2d');
-                const canvasSize = 128; // Desired display size of the pixelated canvas
-                canvas.width = canvasSize;
-                canvas.height = canvasSize;
-
-                let virtualResolution = 8; // Most pixelated (e.g., 8x8 blocks)
-                if (isGameOver || incorrectGuesses >= MAX_GUESSES) {
-                    virtualResolution = canvasSize; // Fully revealed
-                } else if (incorrectGuesses === 1) {
-                    virtualResolution = 16;
-                } else if (incorrectGuesses === 2) {
-                    virtualResolution = 32;
-                }
-                // Note: if MAX_GUESSES is 3, then incorrectGuesses can be 0, 1, 2.
-                // If incorrectGuesses is 0, virtualResolution is 8.
-
-                const offscreenCanvas = document.createElement('canvas');
-                const offscreenCtx = offscreenCanvas.getContext('2d');
-                const sourceSize = 256;
-                offscreenCanvas.width = sourceSize;
-                offscreenCanvas.height = sourceSize;
-
-                offscreenCtx.clearRect(0, 0, sourceSize, sourceSize);
-                offscreenCtx.font = `${sourceSize * 0.75}px Arial`; // Adjusted for better fit
-                offscreenCtx.textAlign = 'center';
-                offscreenCtx.textBaseline = 'middle';
-                offscreenCtx.fillText(displayChar, sourceSize / 2, sourceSize / 2 + (sourceSize * 0.05)); // Slight Y adjustment
-
-                const tempSmallCanvas = document.createElement('canvas');
-                tempSmallCanvas.width = virtualResolution;
-                tempSmallCanvas.height = virtualResolution;
-                const tempSmallCtx = tempSmallCanvas.getContext('2d');
-
-                tempSmallCtx.imageSmoothingEnabled = false;
-                tempSmallCtx.drawImage(offscreenCanvas, 0, 0, sourceSize, sourceSize, 0, 0, virtualResolution, virtualResolution);
-
-                ctx.clearRect(0, 0, canvasSize, canvasSize);
-                ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(tempSmallCanvas, 0, 0, virtualResolution, virtualResolution, 0, 0, canvasSize, canvasSize);
-
-            } else { // Classic mode
-                canvas.style.display = 'none';
-                textEmojiSpan.style.display = 'inline';
-                emojiContainer.classList.add('classic-mode');
-                emojiContainer.classList.remove('pixelated-mode');
-                textEmojiSpan.textContent = displayChar;
-                // textEmojiSpan.style.fontSize = '6rem'; // Already set in HTML or CSS
-            }
+            emojiContainer.classList.add('classic-mode');
+            emojiContainer.classList.remove('pixelated-mode');
+            textEmojiSpan.textContent = displayChar;
         }
 
         // Modify your handleGuessResponse function (or equivalent)

@@ -1,8 +1,31 @@
+/* --- ADD OR VERIFY THESE AT THE TOP --- */
+:root {
+  /* Light Mode Defaults */
+  --card-bg: #ffffff;
+  --card-border: #dee2e6;
+  --text-color: #212529;
+  --body-bg: #f4f4f4;
+  --link-color: #0d6efd;
+  --muted-text: #6c757d;
+}
+
+body.dark-mode {
+  /* Dark Mode Overrides */
+  --card-bg: #343a40;
+  --card-border: #495057;
+  --text-color: #f8f9fa;
+  --body-bg: #212529;
+  --link-color: #6ea8fe;
+  --muted-text: #adb5bd;
+}
+/* --- END ADD/VERIFY --- */
+
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-color: #f4f4f4;
+    background-color: var(--body-bg); /* Use variable */
+    color: var(--text-color); /* Use variable */
 }
 
 header {
@@ -23,11 +46,266 @@ h1 {
 }
 
 footer {
-    background: #35424a;
-    color: #ffffff;
+    background: var(--card-bg); /* Use variable */
+    color: var(--text-color); /* Use variable */
     text-align: center;
     padding: 10px 0;
     position: relative;
     bottom: 0;
     width: 100%;
+    border-top: 1px solid var(--card-border); /* Use variable */
 }
+
+/* Sidebar Styles */
+.sidebar {
+    height: 100%; /* Full height */
+    width: 65px; /* Initial narrow width */
+    position: fixed; /* Fixed Sidebar (stays in place on scroll) */
+    z-index: 1031; /* Make sure it's above most content but potentially below modals/navbars if needed */
+    top: 0;
+    left: 0;
+    background-color: var(--card-bg, #f8f9fa); /* Use theme color or fallback */
+    border-right: 1px solid var(--card-border, #dee2e6);
+    overflow-x: hidden; /* Hide horizontal content */
+    padding-top: 20px;
+    transition: width 0.3s ease; /* Smooth transition for width */
+    white-space: nowrap; /* Prevent text wrapping during transition */
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+.sidebar:hover {
+    width: 220px; /* Expanded width on hover */
+}
+
+.sidebar .sidebar-item {
+    padding: 10px 15px;
+    text-decoration: none;
+    font-size: 1.1rem;
+    color: var(--text-color, #333);
+    display: block; /* Make the entire area clickable */
+    transition: background-color 0.2s;
+    overflow: hidden; /* Ensure text stays hidden initially */
+    display: flex; /* Use flexbox for icon and text alignment */
+    align-items: center;
+}
+
+.sidebar .sidebar-item span:first-child { /* Icon */
+    margin-right: 15px; /* Space between icon and text */
+    font-size: 1.5rem; /* Larger icon */
+    min-width: 30px; /* Ensure icon area has width */
+    text-align: center;
+}
+
+.sidebar .sidebar-item .sidebar-text {
+    opacity: 0; /* Hide text initially */
+    transition: opacity 0.2s ease 0.1s; /* Fade in text slightly delayed */
+}
+
+.sidebar:hover .sidebar-item .sidebar-text {
+    opacity: 1; /* Show text on sidebar hover */
+}
+
+.sidebar .sidebar-item:hover {
+    background-color: rgba(0, 0, 0, 0.1); /* Subtle hover effect */
+}
+
+/* Collapsible Sidebar Item Styles */
+
+/* Add this rule to remove padding from the container div */
+.sidebar .sidebar-item.collapsible {
+    padding: 0; /* Override the default sidebar-item padding */
+}
+
+.sidebar .collapsible .sidebar-link {
+    display: flex;
+    align-items: center;
+    width: 100%; /* Ensure link takes full width */
+    text-decoration: none;
+    color: var(--text-color, #333);
+    padding: 10px 15px; /* Keep padding on the inner link */
+    position: relative; /* For absolute positioning of icon if needed */
+}
+
+.sidebar .collapsible .sidebar-link:hover {
+    background-color: rgba(0, 0, 0, 0.05); /* Lighter hover for the trigger */
+}
+
+.sidebar .collapsible .sidebar-link span:first-child { /* Icon */
+    margin-right: 15px;
+    font-size: 1.5rem;
+    min-width: 30px;
+    text-align: center;
+}
+
+/* .sidebar:hover .collapsible .sidebar-link .sidebar-text {
+    opacity: 1;
+    transition: opacity 0.2s ease 0.1s;
+} */
+
+.sidebar .dropdown-icon {
+    font-size: 0.7rem; /* Smaller arrow */
+    margin-left: auto; /* Push arrow to the right */
+    transition: transform 0.3s ease;
+    opacity: 0; /* Hide arrow initially */
+}
+
+.sidebar:hover .dropdown-icon {
+    opacity: 1; /* Show arrow on hover */
+}
+
+/* Rotate arrow when collapsed */
+.sidebar .collapsible .sidebar-link[aria-expanded="true"] .dropdown-icon {
+    transform: rotate(180deg);
+}
+
+/* Sub-menu styles */
+.sidebar .sub-menu {
+    padding-left: 15px; /* Indent sub-menu slightly */
+    background-color: rgba(0, 0, 0, 0.03); /* Slightly different background */
+    /* Collapse transition is handled by Bootstrap JS */
+    overflow: hidden; /* Hide overflow when collapsed */
+    height: auto; /* Allow height based on content */
+}
+
+/* Ensure sub-menu is visible and content isn't clipped when shown */
+.sidebar .sub-menu.show {
+    overflow: visible; /* Allow content to be seen */
+}
+
+.sidebar .sub-menu .sub-item {
+    padding: 8px 15px 8px 25px; /* Adjust padding for sub-items */
+    font-size: 1rem; /* Slightly smaller font */
+}
+
+.sidebar .sub-menu .sub-item span:first-child { /* Sub-item icon */
+    margin-right: 10px;
+    font-size: 1.2rem; /* Smaller icon */
+    min-width: 25px;
+}
+
+/* Remove block display from sidebar-item if it's inside sub-menu */
+.sidebar .sub-menu .sidebar-item {
+    display: flex; /* Keep flex for alignment */
+}
+
+/* Default state: Hide all text */
+.sidebar .sidebar-item .sidebar-text,
+.sidebar .collapsible .sidebar-link .sidebar-text {
+    opacity: 0;
+    transition: opacity 0.2s ease 0.1s;
+}
+
+/* Hover state: Show text in direct items (Home, Classic, Settings) */
+/* Use > to target only direct children if needed, but .sidebar-item should be okay */
+.sidebar:hover .sidebar-item .sidebar-text {
+    opacity: 1;
+}
+
+/* Hover state: Specifically show text in the collapsible trigger link */
+.sidebar:hover .collapsible .sidebar-link .sidebar-text {
+    opacity: 1;
+    /* Ensure transition applies here too */
+    transition: opacity 0.2s ease 0.1s;
+}
+
+/* Hover state + Sub-menu shown: Show text in sub-items */
+.sidebar:hover .sub-menu.show .sub-item .sidebar-text {
+     opacity: 1;
+     transition: opacity 0.2s ease 0.1s; /* Ensure transition applies */
+}
+
+/* Hover state + Sub-menu shown: Show text in sub-items */
+/* Increased specificity */
+.sidebar:hover .sub-menu.show .sidebar-item.sub-item .sidebar-text {
+     opacity: 1;
+     transition: opacity 0.2s ease 0.1s; /* Ensure transition applies */
+}
+
+/* Main Content Wrapper Styles */
+.main-content {
+    margin-left: 65px; /* Initial margin to match sidebar width */
+    padding: 20px; /* Add some padding */
+    transition: margin-left 0.3s ease; /* Smooth transition for margin */
+    min-height: 100vh; /* Ensure it takes full height */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Adjust main content margin when sidebar is hovered */
+/* This requires JS or :has() - for now, let's rely on sidebar overlaying slightly */
+/* If content shift is desired, we'll add JS */
+
+/* Adjust dark mode toggle position if needed */
+#darkModeToggle {
+    /* position: fixed; */ /* Remove fixed if it's inside main-content now */
+    /* Adjust top/right if needed */
+     position: fixed; /* Keep it fixed relative to viewport */
+     top: 10px;
+     /* Adjust right based on sidebar width */
+     right: 10px; /* Or calculate based on viewport width if needed */
+     z-index: 1032; /* Above sidebar */
+}
+
+/* Ensure footer stays within main-content */
+.main-content footer {
+    margin-top: auto; /* Push footer to the bottom */
+    width: 100%; /* Take full width of the main-content area */
+    position: static; /* Override previous fixed/relative positioning */
+    background: var(--card-bg, #f8f9fa); /* Match theme */
+    color: var(--text-color, #333);
+    border-top: 1px solid var(--card-border, #dee2e6);
+    padding: 10px 0; /* Added padding for consistency */
+    text-align: center; /* Added text-align */
+}
+
+/* --- ADD THIS RULE FOR DARK MODE FOOTER --- */
+body.dark-mode .main-content footer {
+    background-color: var(--card-bg, #343a40); /* Dark background */
+    color: var(--text-color, #f8f9fa);       /* Light text */
+    border-top-color: var(--card-border, #495057); /* Dark border */
+}
+/* --- END ADD RULE --- */
+
+/* Adjust container margin if needed */
+.main-content .container {
+    margin-top: 20px; /* Adjust top margin if header is removed */
+    width: 90%; /* Adjust width as needed */
+    max-width: 700px; /* Keep max-width */
+}
+
+#emoji-container {
+    min-height: 130px; /* Ensure space for the canvas/emoji */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#pixelated-emoji-canvas {
+    image-rendering: pixelated; /* Crisps up the scaled canvas */
+    image-rendering: -moz-crisp-edges; /* Firefox */
+    image-rendering: crisp-edges; /* Other browsers */
+    width: 128px;  /* Match JS canvasSize */
+    height: 128px; /* Match JS canvasSize */
+    border: 1px solid var(--card-border, #ccc); /* Optional border */
+    background-color: var(--card-bg, #fff); /* Ensure background for transparent emojis */
+}
+
+body.dark-mode #pixelated-emoji-canvas {
+    border: 1px solid var(--card-border, #555);
+    background-color: var(--card-bg, #343a40);
+}
+
+#text-emoji-display {
+    font-size: 6rem; /* Default size for classic mode */
+    line-height: 1;
+}
+
+/* Optional: if you want to visually distinguish the container */
+/*
+#emoji-container.pixelated-mode {
+    border: 2px dashed blue;
+}
+#emoji-container.classic-mode {
+    border: 2px dashed green;
+}
+*/

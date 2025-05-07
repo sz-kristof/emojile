@@ -6,14 +6,24 @@ from datetime import datetime # Add datetime import
 # Define the new Riddle model structure
 class Riddle(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    emoji = db.Column(db.String(10), unique=True, nullable=False) # Store the single emoji character
+    emoji = db.Column(db.String(10), nullable=False) # REMOVED unique=True
     name = db.Column(db.String(100), nullable=False) # Official Unicode name
     category = db.Column(db.String(50), nullable=False) # e.g., "Smileys & People"
     # Add a day_number column, indexed for faster lookups
-    day_number = db.Column(db.Integer, unique=True, nullable=True, index=True)
+    day_number = db.Column(db.Integer, nullable=True) # Remove unique=True and index=True
+    # --- ADD THIS LINE ---
+    game_mode = db.Column(db.String(50), nullable=True, server_default='Classic') # Add game_mode
+
+    # --- ADD THIS TABLE ARGS FOR COMPOSITE INDEX ---
+    __table_args__ = (
+        db.Index('ix_riddle_game_mode_day_number', 'game_mode', 'day_number', unique=True),
+        # db.UniqueConstraint('emoji', 'game_mode', name='uq_emoji_game_mode') # <-- REMOVE OR COMMENT OUT THIS LINE
+    )
+    # --- END ADDED TABLE ARGS ---
 
     def __repr__(self):
-        return f'<Riddle {self.emoji} - {self.name} (Day {self.day_number})>'
+        # Optional: Add game_mode to the representation
+        return f'<Riddle {self.emoji} - {self.name} (Mode: {self.game_mode}, Day: {self.day_number})>'
 
 # --- NEW PlayerStats Model ---
 class PlayerStats(db.Model):
@@ -31,6 +41,7 @@ class PlayerStats(db.Model):
     def __repr__(self):
         return f'<PlayerStats {self.player_uuid}>'
 
+AVAILABLE_MODES = ['Classic', 'Pixelated']
 # Sample list of emojis with names and categories
 # (You'll want a much larger list from a reliable source like Unicode CLDR or a library)
 initial_emojis = [
@@ -88,45 +99,3 @@ initial_emojis = [
     {"emoji": "⏰", "name": "Alarm Clock", "category": "Objects"},
     {"emoji": "✨", "name": "Sparkles", "category": "Activities"},
 ]
-
-def add_initial_riddles():
-    """Adds initial emojis and assigns sequential day_numbers if missing."""
-    from sqlalchemy import func # Import func for max()
-
-    # Find the maximum assigned day_number in the database
-    max_day_num_result = db.session.query(func.max(Riddle.day_number)).scalar()
-    next_day_num = (max_day_num_result + 1) if max_day_num_result is not None else 0
-    print(f"Starting next day number assignment from: {next_day_num}")
-
-    added_count = 0
-    for emoji_data in initial_emojis:
-        exists = Riddle.query.filter_by(emoji=emoji_data["emoji"]).first()
-        if not exists:
-            new_riddle = Riddle(
-                emoji=emoji_data["emoji"],
-                name=emoji_data["name"],
-                category=emoji_data["category"],
-                day_number=next_day_num # Assign the next available day number
-            )
-            db.session.add(new_riddle)
-            print(f"  Adding '{emoji_data['name']}' with day_number {next_day_num}")
-            next_day_num += 1 # Increment for the next new emoji
-            added_count += 1
-        # Optional: Assign day_number to existing riddles if they lack one
-        # This is better handled by a one-time migration script (see Step 2c)
-        # elif exists and exists.day_number is None:
-        #     # Handle assigning day_number to existing ones if needed, carefully
-        #     pass
-
-    if added_count > 0:
-        try:
-            db.session.commit()
-            print(f"Added {added_count} new initial emojis with day numbers.")
-        except Exception as e:
-            db.session.rollback()
-            print(f"Error adding new emojis: {e}")
-    else:
-        print("No new initial emojis to add (or all already exist).")
-
-# You might need to adjust your init_db command registration if it was separate
-# Ensure it calls this updated add_initial_riddles function.
