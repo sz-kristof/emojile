@@ -29,6 +29,7 @@ class Riddle(db.Model):
 class PlayerStats(db.Model):
     # Use a UUID string as the primary key
     player_uuid = db.Column(db.String(36), primary_key=True)
+    game_mode = db.Column(db.String(50), primary_key=True) # Added: Part of composite PK
     total_games = db.Column(db.Integer, default=0, nullable=False)
     total_incorrect = db.Column(db.Integer, default=0, nullable=False)
     current_play_streak = db.Column(db.Integer, default=0, nullable=False)
@@ -39,7 +40,7 @@ class PlayerStats(db.Model):
     last_played_datetime = db.Column(db.DateTime, nullable=True)
 
     def __repr__(self):
-        return f'<PlayerStats {self.player_uuid}>'
+        return f'<PlayerStats {self.player_uuid} Mode: {self.game_mode}>' # Updated repr
 
 AVAILABLE_MODES = ['Classic', 'Pixelated']
 # Sample list of emojis with names and categories

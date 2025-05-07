@@ -33,14 +33,14 @@
 <body>
     <!-- Sidebar (Include the same sidebar HTML as index.html) -->
     <div class="sidebar">
-        <a href="#" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
+        <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
         <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🧩</span> <span class="sidebar-text">Classic</span></a>
         <!-- Link to More Games Page (Active state might need styling) -->
         <a href="{{ url_for('main.more_games') }}" class="sidebar-item">
             <span>🎮</span>
             <span class="sidebar-text">More Games</span>
         </a>
-        <a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>
+        <!--<a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>-->
     </div>
 
     <!-- Main Content -->

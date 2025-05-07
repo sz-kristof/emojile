@@ -403,7 +403,7 @@
         const isWinOnLoad = {{ is_win | tojson }};         // Pass boolean is_win status
         const dayNumberOnLoad = {{ day_number | default(0) }};
         const incorrectGuessesOnLoad = {{ incorrect_guesses | default(0) }};
-        const maxGuessesOnLoad = {{ max_guesses | default(6) }};
+        const maxGuessesOnLoad = {{ max_guesses | default(3) }};
 
         const MAX_GUESSES = {{ max_guesses }};
         let currentEmojiCharacter = ''; // To store the fetched emoji

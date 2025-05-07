@@ -205,6 +205,23 @@
             font-size: 1.1rem;
             color: #6c757d;
         }
+
+        /* Style for the specific emoji character display span in Classic mode */
+        #text-emoji-display {
+            /* user-select properties to prevent copying */
+            user-select: none; /* Standard */
+            -webkit-user-select: none; /* Safari */
+            -moz-user-select: none; /* Firefox */
+            -ms-user-select: none; /* IE/Edge */
+            /* cursor: default; */ /* Optional: to indicate it's not selectable text */
+        }
+
+        /* Remove or repurpose the old .emoji-display class if it's no longer used as intended */
+        /* .emoji-display { 
+            font-size: 5rem; 
+            text-align: center; 
+            margin-bottom: 10px; 
+        } */
     </style>
     <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-1LVW18WYHP"></script>
@@ -219,7 +236,7 @@
 <body>
     <!-- Sidebar -->
     <div class="sidebar">
-        <a href="#" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
+        <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
 
         <!-- Classic Game Link (Top Level) -->
         <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🧩</span> <span class="sidebar-text">Classic</span></a>
@@ -232,7 +249,7 @@
         </a>
         <!-- Removed the entire div#emojiGamesSubmenu block -->
 
-        <a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>
+        <!--<a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>-->
     </div>
 
     <!-- Main Content Wrapper -->
@@ -295,18 +312,16 @@
 
                         <!-- Answer Display (Uses emoji name passed as answer_display) -->
                         <div class="answer-tiles">
-                            {% for char in answer_display %}
-                                {% if char.isalpha() %}
-                                    {# Add the ID attribute here #}
-                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">
-                                        {{ char.upper() if (char in guessed_letters or game_over) else '&nbsp;' | safe }}
-                                    </span>
-                                {% elif char == ' ' %}
-                                    {# Spaces don't need an ID for guessing, but could add one if needed for other reasons #}
+                            {% for char_in_display in answer_display %}
+                                {% if char_in_display == ' ' %}
+                                    {# This is a space in the riddle name #}
                                     <span class="answer-tile space">&nbsp;</span>
+                                {% elif char_in_display == '_' %}
+                                    {# This is an unguessed letter, render an empty-looking tile #}
+                                    <span class="answer-tile">&nbsp;</span>
                                 {% else %}
-                                    {# Other characters like hyphens - add ID for consistency? #}
-                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">{{ char }}</span>
+                                    {# This is a revealed letter #}
+                                    <span class="answer-tile">{{ char_in_display }}</span>
                                 {% endif %}
                             {% endfor %}
                         </div>
@@ -319,12 +334,11 @@
                                 {% set is_guessed = letter_lower in guessed_letters %}
                                 {% set is_correct = is_guessed and letter_lower in answer_display %}
                                 {% set is_disabled = is_guessed or game_over %}
-                                {# Change from <a> to <button> #}
                                 <button type="button"
                                         class="letter-tile btn btn-outline-secondary m-1
                                            {% if is_disabled %}disabled{% endif %}
                                            {% if is_correct %}correct{% endif %}"
-                                        data-letter="{{ letter_lower }}" {# Store letter in data attribute #}
+                                        data-letter="{{ letter_lower }}"
                                         {% if is_disabled %}disabled aria-disabled="true"{% endif %}>
                                     {{ letter }}
                                 </button>
@@ -348,43 +362,35 @@
             {% endif %}
 
             <!-- Stats Display -->
-            <div class="card mt-4" id="stats-card" {% if stats.total_games == 0 %}style="display: none;"{% endif %}> {# ID for showing/hiding #}
+            <div id="stats-card" class="card mt-4" {% if not stats or stats.total_games == 0 %}style="display: none;"{% endif %}>
                 <div class="card-header">
-                    <!-- Use a heading for structure within the card -->
-                    <h2>Your Statistics</h2>
-                    {% if streak_test_mode %}
-                        <span class="badge bg-warning text-dark float-end">Streak Test Mode Active</span>
-                    {% endif %}
+                    <h2>Your Statistics (Classic Mode)</h2>
                 </div>
-                <div class="card-body" id="stats-body"> {# ID for updating content #}
+                <div class="card-body" id="stats-body">
                     <div class="row">
                         <div class="col-md-6">
-                            <p><strong>Total Games Played:</strong> <span id="stats-total-games">{{ stats.total_games }}</span></p>
-                            <p><strong>Average Incorrect Guesses:</strong> <span id="stats-avg-incorrect">{{ "%.2f"|format(avg_incorrect) }}</span></p>
+                            <p><strong>Total Games Played:</strong> <span id="stats-total-games">{{ stats.total_games | default(0) }}</span></p>
+                            <p><strong>Average Incorrect Guesses:</strong> <span id="stats-avg-incorrect">{{ "%.2f"|format(stats.avg_incorrect | default(0.0)) }}</span></p>
                         </div>
                         <div class="col-md-6">
-                            <p><strong>Current Daily Play Streak:</strong> <span id="stats-current-play-streak">{{ stats.current_play_streak }}</span></p>
-                            <p><strong>Longest Daily Play Streak:</strong> <span id="stats-longest-play-streak">{{ stats.longest_play_streak }}</span></p>
-                            <p><strong>Current Correct Guess Streak:</strong> <span id="stats-current-correct-streak">{{ stats.current_correct_streak }}</span></p>
-                            <p><strong>Longest Correct Guess Streak:</strong> <span id="stats-longest-correct-streak">{{ stats.longest_correct_streak }}</span></p>
+                            <p><strong>Current Play Streak:</strong> <span id="stats-current-play-streak">{{ stats.current_play_streak | default(0) }}</span></p>
+                            <p><strong>Longest Play Streak:</strong> <span id="stats-longest-play-streak">{{ stats.longest_play_streak | default(0) }}</span></p>
+                            <p><strong>Current Correct Streak:</strong> <span id="stats-current-correct-streak">{{ stats.current_correct_streak | default(0) }}</span></p>
+                            <p><strong>Longest Correct Streak:</strong> <span id="stats-longest-correct-streak">{{ stats.longest_correct_streak | default(0) }}</span></p>
                         </div>
                     </div>
-                     {% if stats.last_played_datetime %} {# Check if the datetime object exists #}
-                     <small class="text-muted" id="stats-last-played">Last game finished: {{ stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S') }}</small> {# Format the datetime object #}
-                     {% else %}
-                     <small class="text-muted" id="stats-last-played"></small>
-                     {% endif %}
+                    {% if stats.last_played_datetime %}
+                    <small class="text-muted" id="stats-last-played">Last game finished: {{ stats.last_played_datetime.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                    {% else %}
+                    <small class="text-muted" id="stats-last-played"></small>
+                    {% endif %}
 
-                     <!-- Add Share Stats Button -->
-                     <div class="text-center mt-3">
-                         <button id="shareStatsButton" class="btn btn-info btn-sm">Share Overall Stats</button>
-                         <span id="copyStatsFeedback" class="ms-2" style="display: none; color: green;">Copied!</span>
-                     </div>
-                     <!-- End Share Stats Button -->
-
-                </div> {# End stats-body #}
+                    <div class="text-center mt-3">
+                        <button id="shareStatsButton" class="btn btn-info btn-sm">Share Overall Stats</button>
+                        <span id="copyStatsFeedback" class="ms-2" style="display: none; color: green;">Copied!</span>
+                    </div>
+                </div>
             </div>
-            <!-- End Stats Display -->
 
             <footer class="text-center mt-4 text-muted py-3"> <!-- Added py-3 for padding -->
                 &copy; {{ current_year }} Emojile
@@ -394,472 +400,26 @@
     </div> <!-- End Main Content Wrapper -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Pass the next midnight time from Flask to JavaScript
-        const nextMidnightISO = "{{ next_midnight_iso | default('null') }}"; // Use default filter for safety
-        const isGameOverOnLoad = {{ game_over | tojson }}; // Pass boolean game_over status
-        const isWinOnLoad = {{ is_win | tojson }};         // Pass boolean is_win status
-        const dayNumberOnLoad = {{ day_number | default(0) }};
-        const incorrectGuessesOnLoad = {{ incorrect_guesses | default(0) }};
-        const maxGuessesOnLoad = {{ max_guesses | default(6) }};
 
-        const MAX_GUESSES = {{ max_guesses }};
-        let currentEmojiCharacter = ''; // To store the fetched emoji
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const darkModeToggle = document.getElementById('darkModeToggle');
-            const body = document.body;
-            const timerDisplayElement = document.getElementById('timerDisplay');
-            const countdownContainer = document.getElementById('countdownTimer');
-            const shareSection = document.getElementById('share-section'); // Declare shareSection only once
-            const shareButton = document.getElementById('shareButton');
-            const copyFeedback = document.getElementById('copy-feedback');
-            const shareStatsButton = document.getElementById('shareStatsButton');
-            const copyStatsFeedback = document.getElementById('copyStatsFeedback');
-
-            // --- NEW: Set Share Button Data on Load if Game Over ---
-            if (isGameOverOnLoad && shareButton) {
-                 console.log("Setting share button data on page load."); // Debug log
-                 shareButton.dataset.dayNumber = dayNumberOnLoad;
-                 // Calculate attempts based on loaded state
-                 const attemptsOnLoad = incorrectGuessesOnLoad + (isWinOnLoad ? 1 : 0);
-                 shareButton.dataset.attempts = attemptsOnLoad;
-                 shareButton.dataset.maxGuesses = maxGuessesOnLoad;
-                 shareButton.dataset.isWin = isWinOnLoad;
-            }
-            // --- END NEW ---
-
-            // --- Countdown Timer Logic ---
-            let timerInterval = null;
-
-            function updateCountdown() {
-                if (!nextMidnightISO || nextMidnightISO === 'null' || !timerDisplayElement) {
-                    if(countdownContainer) countdownContainer.style.display = 'none'; // Hide if no time
-                    return; // Exit if no target time or element
-                }
-
-                const targetTime = new Date(nextMidnightISO).getTime();
-                const now = new Date().getTime();
-                const difference = targetTime - now;
-
-                if (difference <= 0) {
-                    // Time is up or passed
-                    timerDisplayElement.textContent = "Ready!";
-                    if(countdownContainer) countdownContainer.innerHTML = "<strong>New Emojile available!</strong> Refresh the page.";
-                    clearInterval(timerInterval); // Stop the timer
-                } else {
-                    // Calculate hours, minutes, seconds
-                    const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-                    const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-
-                    // Format H:MM:SS
-                    timerDisplayElement.textContent =
-                        `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-
-                    if(countdownContainer) countdownContainer.style.display = 'block'; // Ensure visible
-                }
-            }
-
-            // Initial call and set interval
-            if (nextMidnightISO && nextMidnightISO !== 'null') {
-                 updateCountdown(); // Run once immediately
-                 timerInterval = setInterval(updateCountdown, 1000); // Update every second
-            } else {
-                 if(countdownContainer) countdownContainer.style.display = 'none'; // Hide if no time initially
-            }
-            // --- End Countdown Timer Logic ---
-
-
-            // --- Dark Mode Logic ---
-            const applyTheme = (theme) => {
-                if (theme === 'dark') {
-                    body.classList.add('dark-mode');
-                    darkModeToggle.textContent = '☀️'; // Sun icon for light mode
-                } else {
-                    body.classList.remove('dark-mode');
-                    darkModeToggle.textContent = '🌙'; // Moon icon for dark mode
-                }
-            };
-
-            // Check localStorage for saved theme
-            const savedTheme = localStorage.getItem('theme') || 'light'; // Default to light
-            applyTheme(savedTheme);
-
-            // Toggle button event listener
-            darkModeToggle.addEventListener('click', () => {
-                const currentTheme = body.classList.contains('dark-mode') ? 'dark' : 'light';
-                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-                localStorage.setItem('theme', newTheme); // Save preference
-                applyTheme(newTheme);
-            });
-            // --- End Dark Mode Logic ---
-
-
-            // --- NEW Emoji Fetch and Display Logic for Classic ---
-            const initialRiddleId = {{ current_riddle_id|tojson }};
-            const initialIncorrectGuesses = {{ incorrect_guesses|tojson }};
-            const initialGameMode = {{ selected_mode|tojson }}; // Should be 'Classic'
-            const initialIsGameOver = {{ game_over|tojson }};
-
-            if (initialRiddleId) {
-                fetchEmojiAndDisplay(initialRiddleId, initialIncorrectGuesses, initialGameMode, initialIsGameOver);
-            } else {
-                displayEmoji('', 0, initialGameMode, true);
-            }
-            // --- End NEW Emoji Fetch ---
-
-            // --- Existing Keyboard Listener ---
-            document.addEventListener('keydown', (event) => {
-                const key = event.key.toLowerCase();
-                if (key.length === 1 && key >= 'a' && key <= 'z') {
-                    const tile = document.getElementById(`tile-${key}`);
-                    if (tile && !tile.classList.contains('disabled')) {
-                        // Simulate click or directly navigate
-                        window.location.href = tile.href;
-                    }
-                }
-            });
-            // --- End Keyboard Listener ---
-
-            // --- NEW: AJAX Guess Handling ---
-            const alphabetContainer = document.querySelector('.alphabet-tiles');
-            const answerDisplayContainer = document.querySelector('.answer-display');
-            const guessesLeftDisplay = document.getElementById('guesses-left-display');
-            const statsCard = document.getElementById('stats-card');
-            const statsBody = document.getElementById('stats-body');
-            const flashContainer = document.querySelector('.container'); // Target container to add flash messages
-
-            // Use event delegation
-            if (alphabetContainer) {
-                alphabetContainer.addEventListener('click', handleGuess);
-            }
-
-            async function handleGuess(event) {
-                // Only act on letter tiles that are buttons and not disabled
-                if (!event.target.matches('.letter-tile:not(:disabled)')) {
-                    return;
-                }
-
-                const button = event.target;
-                const letter = button.dataset.letter;
-
-                // Disable button immediately for feedback
-                button.disabled = true;
-                button.classList.add('disabled');
-
-                try {
-                    const response = await fetch("{{ url_for('main.make_guess') }}", {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                            // Add CSRF token header here if using Flask-WTF/CSRFProtect
-                        },
-                        body: JSON.stringify({ guess: letter })
-                    });
-
-                    const data = await response.json();
-
-                    if (!response.ok || !data.success) {
-                        // Handle errors (e.g., already guessed, game over, server error)
-                        console.error("Guess Error:", data.error || `HTTP error! status: ${response.status}`);
-                        addFlashMessage(data.error || 'An error occurred.', 'danger');
-                        // Re-enable button if the error wasn't "already guessed" or "game over"
-                        if (data.error?.toLowerCase().indexOf('already guessed') === -1 && data.error?.toLowerCase().indexOf('game is already over') === -1) {
-                             button.disabled = false;
-                             button.classList.remove('disabled');
-                        }
-                        return;
-                    }
-
-                    // --- Success: Update UI ---
-
-                    // 1. Update Answer Display
-                    const answerChars = "{{ answer_display }}"; // Get the full answer string
-                    answerChars.split('').forEach((char, index) => {
-                        const placeholder = document.getElementById(`answer-char-${index}`);
-                        if (placeholder && char.toLowerCase() === data.guessed_letter) {
-                            placeholder.textContent = char.toUpperCase();
-                        }
-                    });
-
-                    // 2. Update Guesses Left
-                    guessesLeftDisplay.textContent = `Guesses left: ${ {{ max_guesses }} - data.incorrect_guesses }`;
-
-                    // 3. Style the guessed letter tile
-                    if (data.is_correct) {
-                        button.classList.add('correct');
-                    } else {
-                        // Optionally add an 'incorrect' class for styling wrong guesses
-                        // button.classList.add('incorrect');
-                    }
-
-                    // 4. Handle Game Over
-                    if (data.game_over) {
-                        // Disable all remaining letter tiles
-                        alphabetContainer.querySelectorAll('.letter-tile:not(:disabled)').forEach(tile => {
-                            tile.disabled = true;
-                            tile.classList.add('disabled');
-                        });
-
-                        // --- ADD THIS BLOCK ---
-                        // Reveal the full answer in the tiles on game over
-                        const answerChars = "{{ answer_display }}"; // Get the full answer string again
-                        answerChars.split('').forEach((char, index) => {
-                            const placeholder = document.getElementById(`answer-char-${index}`);
-                            // Check if it's an alpha character placeholder using JavaScript regex
-                            // Replace char.isalpha() with regex test
-                            if (placeholder && /^[a-zA-Z]$/.test(char)) { // <<< FIX HERE
-                                placeholder.textContent = char.toUpperCase(); // Reveal the letter
-                            }
-                        });
-                        // --- END ADDED BLOCK ---
-
-                        // Display Win/Loss Message
-                        const message = data.is_win ? 'Congratulations! You guessed it!' : 'Too many guesses! Better luck next time.';
-                        const category = data.is_win ? 'success' : 'warning';
-                        addFlashMessage(message, category);
-                        addFlashMessage(`The answer was: ${answerChars.toUpperCase()}`, 'info'); // Show answer in message
-
-                        // 5. Update Stats Display (if stats data is returned)
-                        if (data.stats) {
-                            updateStatsDisplay(data.stats);
-                            if (statsCard) statsCard.style.display = 'block'; // Ensure stats card is visible
-                        }
-
-                        // --- Make Share Button Visible ---
-                        if (shareSection) { 
-                            shareSection.style.display = 'block';
-                            // Store necessary data on the button for the share function
-                            shareButton.dataset.dayNumber = "{{ day_number }}";
-                            shareButton.dataset.attempts = data.incorrect_guesses + (data.is_win ? 1 : 0); // Total attempts
-                            shareButton.dataset.maxGuesses = "{{ max_guesses }}";
-                            shareButton.dataset.isWin = data.is_win;
-                        }
-                        // --- End Share Button Visibility ---
-                    }
-
-                } catch (error) {
-                    console.error('Fetch error:', error);
-                    addFlashMessage('A network error occurred. Please try again.', 'danger');
-                    // Re-enable button on network error
-                    button.disabled = false;
-                    button.classList.remove('disabled');
-                }
-            }
-
-            // --- Share Button Logic ---
-            if (shareButton) {
-                shareButton.addEventListener('click', copyShareText);
-            }
-
-            function copyShareText() {
-                const dayNumber = shareButton.dataset.dayNumber;
-                const attempts = shareButton.dataset.attempts;
-                const maxGuesses = shareButton.dataset.maxGuesses;
-                const isWin = shareButton.dataset.isWin === 'true'; // Convert string back to boolean
-
-                // Basic text format (can be enhanced later with squares)
-                let shareText = `Emojile Day ${dayNumber}\n`;
-                if (isWin) {
-                    shareText += `Guessed in ${attempts}/${maxGuesses} attempts! 🎉\n`;
-                } else {
-                    shareText += `X/${maxGuesses} attempts 😥\n`;
-                }
-                shareText += `\n#emojile ${window.location.href}`; // Add hashtag and link
-
-                // Use Clipboard API
-                navigator.clipboard.writeText(shareText).then(() => {
-                    // Success feedback
-                    if (copyFeedback) {
-                        copyFeedback.style.display = 'inline'; // Show "Copied!"
-                        shareButton.disabled = true; // Temporarily disable button
-                        setTimeout(() => {
-                            copyFeedback.style.display = 'none'; // Hide after 2 seconds
-                            shareButton.disabled = false; // Re-enable button
-                        }, 2000);
-                    }
-                }).catch(err => {
-                    console.error('Failed to copy text: ', err);
-                    addFlashMessage('Failed to copy score. Please try again.', 'danger');
-                });
-            }
-            // --- End Share Button Logic ---
-
-            // --- NEW: Share Stats Button Logic ---
-            if (shareStatsButton) {
-                shareStatsButton.addEventListener('click', copyOverallStats);
-            }
-
-            function copyOverallStats() {
-                // Read stats directly from the displayed elements
-                const totalGames = document.getElementById('stats-total-games')?.textContent || 'N/A';
-                const avgIncorrect = document.getElementById('stats-avg-incorrect')?.textContent || 'N/A';
-                const currentPlayStreak = document.getElementById('stats-current-play-streak')?.textContent || 'N/A';
-                const longestPlayStreak = document.getElementById('stats-longest-play-streak')?.textContent || 'N/A';
-                const currentCorrectStreak = document.getElementById('stats-current-correct-streak')?.textContent || 'N/A';
-                const longestCorrectStreak = document.getElementById('stats-longest-correct-streak')?.textContent || 'N/A';
-
-                // Construct the text
-                let statsText = `My Emojile Stats:\n`;
-                statsText += `Total Games: ${totalGames}\n`;
-                statsText += `Avg Incorrect Guesses: ${avgIncorrect}\n`;
-                statsText += `Current Play Streak: ${currentPlayStreak} 🔥\n`;
-                statsText += `Longest Play Streak: ${longestPlayStreak}\n`;
-                statsText += `Current Correct Streak: ${currentCorrectStreak} ✅\n`;
-                statsText += `Longest Correct Streak: ${longestCorrectStreak}\n`;
-                statsText += `\nPlay Emojile! ${window.location.href}`;
-
-                // Use Clipboard API
-                navigator.clipboard.writeText(statsText).then(() => {
-                    // Success feedback
-                    if (copyStatsFeedback) {
-                        copyStatsFeedback.style.display = 'inline'; // Show "Copied!"
-                        shareStatsButton.disabled = true; // Temporarily disable button
-                        setTimeout(() => {
-                            copyStatsFeedback.style.display = 'none'; // Hide after 2 seconds
-                            shareStatsButton.disabled = false; // Re-enable button
-                        }, 2000);
-                    }
-                }).catch(err => {
-                    console.error('Failed to copy stats text: ', err);
-                    addFlashMessage('Failed to copy stats. Please try again.', 'danger');
-                });
-            }
-            // --- End Share Stats Button Logic ---
-
-            // Helper function to add flash messages dynamically
-            function addFlashMessage(message, category) {
-                const alertDiv = document.createElement('div');
-                alertDiv.className = `alert alert-${category} alert-dismissible fade show`;
-                alertDiv.setAttribute('role', 'alert');
-                alertDiv.innerHTML = `
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                `;
-                // Insert after the countdown timer or H1
-                const referenceNode = document.getElementById('countdownTimer') || document.querySelector('h1');
-                if (referenceNode && referenceNode.parentNode) {
-                     referenceNode.parentNode.insertBefore(alertDiv, referenceNode.nextSibling);
-                } else {
-                     flashContainer.insertBefore(alertDiv, flashContainer.firstChild); // Fallback
-                }
-
-                 // Auto-dismiss after a few seconds (optional)
-                 setTimeout(() => {
-                     const bootstrapAlert = bootstrap.Alert.getOrCreateInstance(alertDiv);
-                     if (bootstrapAlert) {
-                         bootstrapAlert.close();
-                     }
-                 }, 7000); // 7 seconds
-            }
-
-            // Helper function to update stats display
-            function updateStatsDisplay(statsData) {
-                const fields = {
-                    'stats-total-games': statsData.total_games,
-                    'stats-avg-incorrect': statsData.avg_incorrect.toFixed(2),
-                    'stats-current-play-streak': statsData.current_play_streak,
-                    'stats-longest-play-streak': statsData.longest_play_streak,
-                    'stats-current-correct-streak': statsData.current_correct_streak,
-                    'stats-longest-correct-streak': statsData.longest_correct_streak,
-                    'stats-last-played': statsData.last_played_datetime_str ? `Last game finished: ${statsData.last_played_datetime_str}` : ''
-                };
-                for (const id in fields) {
-                    const element = document.getElementById(id);
-                    if (element) {
-                        element.textContent = fields[id];
-                    }
-                }
-            }
-
-            // When a guess is made and you get a response, update the display:
-            // Inside your handleGuessResponse(data) function:
-            // fetchEmojiAndDisplay(
-            //     {{ current_riddle_id|tojson }}, // Assuming riddle ID doesn't change mid-game
-            //     data.incorrect_guesses,
-            //     {{ selected_mode|tojson }},
-            //     data.game_over
-            // );
-            // ...
-        }); // End DOMContentLoaded
-
-        async function fetchEmojiAndDisplay(riddleId, incorrectGuesses, gameMode, isGameOver) {
-            if (!riddleId) {
-                console.log("No riddle ID, clearing emoji display.");
-                displayEmoji('', incorrectGuesses, gameMode, isGameOver); // Clear display
-                return;
-            }
-
-            // Fetch the emoji if we don't have it or if it's for a new riddle
-            // For simplicity, let's assume we always fetch if riddleId is present,
-            // or you can cache `currentEmojiCharacter` if `riddleId` matches session's.
-            try {
-                const response = await fetch(`/api/get-emoji/${riddleId}`);
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch emoji: ${response.statusText}`);
-                }
-                const data = await response.json();
-                if (data.emoji) {
-                    currentEmojiCharacter = data.emoji;
-                    displayEmoji(currentEmojiCharacter, incorrectGuesses, gameMode, isGameOver);
-                } else {
-                    console.error("Emoji not found in API response for riddle ID:", riddleId);
-                    displayEmoji('', incorrectGuesses, gameMode, isGameOver); // Clear display
-                }
-            } catch (error) {
-                console.error("Error fetching emoji:", error);
-                displayEmoji('', incorrectGuesses, gameMode, isGameOver); // Clear display on error
-            }
-        }
-
-        function displayEmoji(emojiChar, incorrectGuesses, gameMode, isGameOver) {
-            // gameMode will effectively always be 'Classic' when this template is rendered
-            const textEmojiSpan = document.getElementById('text-emoji-display');
-            const emojiContainer = document.getElementById('emoji-container');
-
-            if (!textEmojiSpan || !emojiContainer) {
-                console.error("Emoji display elements not found for Classic mode!");
-                return;
-            }
-
-            const displayChar = emojiChar || '❓'; // Fallback character
-
-            // Ensure only text emoji is visible
-            textEmojiSpan.style.display = 'inline';
-            // if (document.getElementById('pixelated-emoji-canvas')) { // Should not exist here
-            //     document.getElementById('pixelated-emoji-canvas').style.display = 'none';
-            // }
-
-            emojiContainer.classList.add('classic-mode');
-            emojiContainer.classList.remove('pixelated-mode');
-            textEmojiSpan.textContent = displayChar;
-        }
-
-        // Modify your handleGuessResponse function (or equivalent)
-        function handleGuessResponse(data) {
-            // ... (update guesses, results, keyboard, etc.) ...
-            updateIncorrectGuessesDisplay(data.incorrect_guesses); // You'll need this function
-
-            // Update emoji display based on new state
-            const currentRiddleId = {{ current_riddle_id|tojson }}; // Get current riddle ID
-            const currentGameMode = {{ selected_mode|tojson }};   // Get current game mode
-
-            fetchEmojiAndDisplay(currentRiddleId, data.incorrect_guesses, currentGameMode, data.game_over);
-
-            if (data.game_over) {
-                // ... (handle game over, show modal, etc.) ...
-            }
-            // ...
-        }
-        // You'll also need a function to update the display of incorrect guess count if you have one
-        function updateIncorrectGuessesDisplay(count) {
-            const displayElement = document.getElementById('incorrect-guesses-count'); // Example ID
-            if (displayElement) {
-                displayElement.textContent = `${count} / ${MAX_GUESSES}`;
-            }
-        }
+    <!-- Data for classic_game.js -->
+    <script id="game-config-data" type="application/json">
+        {{ {
+            "nextMidnightISO": next_midnight_iso | default('null'),
+            "isGameOverOnLoad": game_over,
+            "isWinOnLoad": is_win,
+            "dayNumberOnLoad": day_number | default(0),
+            "incorrectGuessesOnLoad": incorrect_guesses | default(0),
+            "maxGuessesOnLoad": max_guesses | default(3),
+            "MAX_GUESSES": max_guesses,
+            "initialRiddleId": current_riddle_id,
+            "initialGameMode": selected_mode,
+            "answerDisplay": answer_display,
+            "makeGuessUrl": url_for('main.make_guess')
+        } | tojson | safe }}
     </script>
+
+    <!-- Link to the external JavaScript file -->
+    <script src="{{ url_for('static', filename='js/classic_game.js') }}" defer></script>
+
 </body>
 </html>

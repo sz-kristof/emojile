@@ -72,14 +72,29 @@
         }
 
         .answer-tile {
-            border-bottom: 3px solid var(--tile-border);
-            color: var(--text-color); /* Ensure revealed letters use theme color */
-            /* ... other answer-tile styles ... */
+            border-bottom: 3px solid var(--tile-border); /* Use theme variable */
+            width: 35px; /* Or your preferred width */
+            height: 45px; /* Or your preferred height */
+            display: inline-flex;
+            justify-content: center;
+            align-items: flex-end; 
+            font-size: 1.8rem; /* Adjust if necessary */
+            font-weight: bold;
+            text-transform: uppercase;
+            padding-bottom: 2px; /* Ensures letter is just above the border */
+            /* line-height: 1; */ /* REMOVE THIS LINE or comment it out */
+            box-sizing: border-box; /* Ensures padding and border are included in width/height */
         }
         .answer-tile.space {
              border-bottom: none;
         }
 
+        /* NEW: Explicit style for revealed letters to ensure they look different */
+        .answer-tile.revealed {
+            /* No specific border change needed here if you always want the bottom border for letters too */
+            /* If you wanted to REMOVE the border for revealed letters, you'd add: */
+            /* border-bottom: none; */
+        }
 
         .letter-tile {
             background-color: var(--tile-bg);
@@ -219,7 +234,7 @@
 <body>
     <!-- Sidebar -->
     <div class="sidebar">
-        <a href="#" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
+        <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🏠</span> <span class="sidebar-text">Home</span></a>
 
         <!-- Classic Game Link (Top Level) -->
         <a href="{{ url_for('main.index', mode='Classic') }}" class="sidebar-item"><span>🧩</span> <span class="sidebar-text">Classic</span></a>
@@ -232,7 +247,7 @@
         </a>
         <!-- Removed the entire div#emojiGamesSubmenu block -->
 
-        <a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>
+        <!--<a href="#" class="sidebar-item"><span>⚙️</span> <span class="sidebar-text">Settings</span></a>-->
     </div>
 
     <!-- Main Content Wrapper -->
@@ -242,7 +257,7 @@
 
         <div class="container">
             <!-- Ensure this is the primary heading -->
-            <h1 class="text-center mb-4">Guess the Official Name of the Emoji!</h1>
+            <h1 class="text-center mb-4">Guess the Mystery Pixelated Emoji of the Day!</h1>
 
             <!-- Countdown Timer Display -->
             <div id="countdownTimer" class="text-center text-muted mb-3" style="font-size: 0.9rem;">
@@ -295,18 +310,13 @@
 
                         <!-- Answer Display (Uses emoji name passed as answer_display) -->
                         <div class="answer-tiles">
-                            {% for char in answer_display %}
-                                {% if char.isalpha() %}
-                                    {# Add the ID attribute here #}
-                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">
-                                        {{ char.upper() if (char in guessed_letters or game_over) else '&nbsp;' | safe }}
-                                    </span>
-                                {% elif char == ' ' %}
-                                    {# Spaces don't need an ID for guessing, but could add one if needed for other reasons #}
-                                    <span class="answer-tile space">&nbsp;</span>
-                                {% else %}
-                                    {# Other characters like hyphens - add ID for consistency? #}
-                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">{{ char }}</span>
+                            {% for char_in_display in answer_display %}
+                                {% if char_in_display == ' ' %}
+                                    <span class="answer-tile space" id="answer-char-{{ loop.index0 }}">&nbsp;</span>
+                                {% elif char_in_display == '_' %}
+                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">&nbsp;</span>
+                                {% else %} {# This is a revealed letter or a non-alpha char from original answer like '-' #}
+                                    <span class="answer-tile" id="answer-char-{{ loop.index0 }}">{{ char_in_display.upper() }}</span>
                                 {% endif %}
                             {% endfor %}
                         </div>
@@ -351,7 +361,7 @@
             <div class="card mt-4" id="stats-card" {% if stats.total_games == 0 %}style="display: none;"{% endif %}> {# ID for showing/hiding #}
                 <div class="card-header">
                     <!-- Use a heading for structure within the card -->
-                    <h2>Your Statistics</h2>
+                    <h2>Your Statistics (Pixelated mode) </h2>
                     {% if streak_test_mode %}
                         <span class="badge bg-warning text-dark float-end">Streak Test Mode Active</span>
                     {% endif %}
@@ -555,7 +565,6 @@
                         headers: {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json'
-                            // Add CSRF token header here if using Flask-WTF/CSRFProtect
                         },
                         body: JSON.stringify({ guess: letter })
                     });
@@ -574,62 +583,64 @@
 
                     // --- Success: Update UI ---
 
-                    // 1. Update Answer Display
-                    const answerCharsForDisplay = "{{ answer_display }}"; // Get the full answer string
-                    answerCharsForDisplay.split('').forEach((char, index) => {
-                        const placeholder = document.getElementById(`answer-char-${index}`);
-                        if (placeholder && char.toLowerCase() === data.guessed_letter) {
-                            placeholder.textContent = char.toUpperCase();
+                    // 1. Update Answer Display using data.answer_display from server
+                    const serverAnswerDisplay = data.answer_display; // Correct: from server response
+                    serverAnswerDisplay.split('').forEach((char, index) => {
+                        const tile = document.getElementById(`answer-char-${index}`);
+                        if (tile) {
+                            if (char === ' ') {
+                                tile.innerHTML = '&nbsp;'; 
+                                tile.classList.add('space');
+                                tile.classList.remove('revealed'); 
+                            } else if (char === '_') {
+                                tile.innerHTML = '&nbsp;'; 
+                                tile.classList.remove('space');
+                                tile.classList.remove('revealed');
+                            } else { 
+                                tile.textContent = char.toUpperCase();
+                                tile.classList.remove('space');
+                                tile.classList.add('revealed'); 
+                            }
                         }
                     });
 
                     // 2. Update Guesses Left
-                    if(guessesLeftDisplay) { // Check if guessesLeftDisplay exists
-                        guessesLeftDisplay.textContent = `Guesses left: ${ {{ max_guesses }} - data.incorrect_guesses }`;
+                    if(guessesLeftDisplay) { 
+                        guessesLeftDisplay.textContent = `Guesses left: ${ MAX_GUESSES - data.incorrect_guesses }`;
                     }
-
 
                     // 3. Style the guessed letter tile
                     if (data.is_correct) {
                         button.classList.add('correct');
                     }
 
-                    // **** THIS IS THE CRUCIAL PART FOR PIXELATION UPDATE ****
-                    const currentRiddleIdForPixelation = {{ current_riddle_id|tojson }};
-                    const currentGameModeForPixelation = {{ selected_mode|tojson }};
-
+                    // Update Pixelation
+                    const currentRiddleIdForPixelation = {{ game_config_data.initialRiddleId | tojson if game_config_data else current_riddle_id | tojson }};
+                    const currentGameModeForPixelation = {{ game_config_data.initialGameMode | tojson if game_config_data else selected_mode | tojson }};
+                    
                     fetchEmojiAndDisplay(
                         currentRiddleIdForPixelation,
-                        data.incorrect_guesses, // Use updated incorrect_guesses from server
+                        data.incorrect_guesses, 
                         currentGameModeForPixelation,
-                        data.game_over          // Use updated game_over from server
+                        data.game_over          
                     );
-                    // **** END PIXELATION UPDATE CALL ****
-
-
+                    
                     // 4. Handle Game Over
                     if (data.game_over) {
-                        // Disable all remaining letter tiles
                         if (alphabetContainer) {
-                            alphabetContainer.querySelectorAll('.letter-tile:not(:disabled)').forEach(tile => {
+                            alphabetContainer.querySelectorAll('.letter-tile:not(.disabled)').forEach(tile => {
                                 tile.disabled = true;
                                 tile.classList.add('disabled');
                             });
                         }
 
-                        // Reveal the full answer in the tiles on game over
-                        const answerCharsOnGameOver = "{{ answer_display }}";
-                        answerCharsOnGameOver.split('').forEach((char, index) => {
-                            const placeholder = document.getElementById(`answer-char-${index}`);
-                            if (placeholder && /^[a-zA-Z]$/.test(char)) {
-                                placeholder.textContent = char.toUpperCase();
-                            }
-                        });
+                        // The main answer display update (Step 1 above) already handles showing the full answer
+                        // when data.game_over is true because data.answer_display will be the full answer.
 
                         const message = data.is_win ? 'Congratulations! You guessed it!' : 'Too many guesses! Better luck next time.';
                         const msgCategory = data.is_win ? 'success' : 'warning';
                         addFlashMessage(message, msgCategory);
-                        addFlashMessage(`The answer was: ${answerCharsOnGameOver.toUpperCase()}`, 'info');
+                        addFlashMessage(`The answer was: ${serverAnswerDisplay.toUpperCase()}`, 'info'); // Use serverAnswerDisplay
 
                         if (data.stats) {
                             updateStatsDisplay(data.stats);
@@ -638,10 +649,10 @@
 
                         if (shareSection) {
                             shareSection.style.display = 'block';
-                            if(shareButton) { // Check if shareButton exists
-                                shareButton.dataset.dayNumber = "{{ day_number_on_load }}"; // Use day_number_on_load or pass current day_number
+                            if(shareButton) { 
+                                shareButton.dataset.dayNumber = dayNumberOnLoad; 
                                 shareButton.dataset.attempts = data.incorrect_guesses + (data.is_win ? 1 : 0);
-                                shareButton.dataset.maxGuesses = "{{ max_guesses }}";
+                                shareButton.dataset.maxGuesses = MAX_GUESSES; 
                                 shareButton.dataset.isWin = data.is_win;
                             }
                         }
