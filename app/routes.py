@@ -450,12 +450,9 @@ def init_db_command():
             # Effective emoji index for this mode, before conflict resolution
             # The (mode_idx * some_offset) makes each mode start at a different point
             # in the initial_emojis list for its own "day 0".
-            # Let's use a larger, somewhat arbitrary offset that's not too close to num_modes
-            # to create more initial separation in sequences.
-            # A prime number relative to num_unique_emojis could be good.
-            # For simplicity, let's use a mode-specific offset.
             
-            mode_specific_start_offset = mode_idx * (num_unique_emojis // num_modes + mode_idx) # Creates some spread
+            # Ensure the stable offset logic is the one that's active:
+            mode_specific_start_offset = mode_idx # Classic (idx 0) gets offset 0, Pixelated (idx 1) gets offset 1, etc.
 
             # The emoji this mode *would* pick for its internal sequence on day_number_iter
             prospective_emoji_idx = (day_number_iter + mode_specific_start_offset) % num_unique_emojis
